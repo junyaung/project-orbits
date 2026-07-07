@@ -193,7 +193,7 @@ func _build_result_card() -> void:
 	# rather than punished - a quiet pause, not a game-over slam.
 	var W := _screen.x
 	var CW := 760.0
-	var CH := 940.0
+	var CH := 1058.0
 	result_panel = _ninepatch(CORE + "panel_large.png", 60, 60, 60, 60)
 	result_panel.size = Vector2(CW, CH)
 	result_panel.position = Vector2((W - CW) * 0.5, (_screen.y - CH) * 0.5)
@@ -278,7 +278,7 @@ func _build_result_card() -> void:
 	retry.add_theme_font_size_override("font_size", 54)
 	retry.add_theme_color_override("font_color", Color(0.4, 0.28, 0.2))
 	retry.size = Vector2(480, 132)
-	retry.position = Vector2((CW - 480) * 0.5, 700)
+	retry.position = Vector2((CW - 480) * 0.5, 750)
 	retry.add_theme_stylebox_override("normal", _capsule_style(Color(1, 1, 1)))
 	retry.add_theme_stylebox_override("hover", _capsule_style(Color(1, 0.99, 0.94)))
 	retry.add_theme_stylebox_override("pressed", _capsule_style(Color(0.88, 0.84, 0.76)))
@@ -291,7 +291,7 @@ func _build_result_card() -> void:
 	home.add_theme_font_size_override("font_size", 40)
 	home.add_theme_color_override("font_color", Color(0.42, 0.48, 0.58))
 	home.size = Vector2(300, 84)
-	home.position = Vector2((CW - 300) * 0.5, 848)
+	home.position = Vector2((CW - 300) * 0.5, 928)
 	home.add_theme_stylebox_override("normal", _capsule_style(Color(0.86, 0.90, 0.96)))
 	home.add_theme_stylebox_override("hover", _capsule_style(Color(0.92, 0.95, 0.99)))
 	home.add_theme_stylebox_override("pressed", _capsule_style(Color(0.76, 0.82, 0.90)))
