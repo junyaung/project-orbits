@@ -1,26 +1,25 @@
 extends Control
 class_name HomeScreen
-## Home / Launch hub. Cozy watercolor launch lobby built from the sliced UXUI_2
-## sprite kit. Launch is the strongest CTA; the biome background is muted for
-## readability. Text is added here with Labels (never baked into sprites).
-##
-## Layout is authored at the 1080x1920 design resolution; the project's
-## canvas_items / expand stretch handles real device sizes.
+## Home / Launch hub — a cozy watercolor launch base for the orbit cat adventure.
+## Dedicated storybook background (starry sky + floating planets + meadow village),
+## Mochi on the blue manhole cover as the hero, a compact Event card, Daily/Quests,
+## a Star Path progress card, and the dominant Launch CTA. Text is Labels only.
 
 signal launch_pressed
 signal nav_selected(id: String)
 signal settings_pressed
+signal event_pressed
 
 const DESIGN := Vector2(1080, 1920)
 const INK := Color(0.34, 0.29, 0.24)
 const INK_SOFT := Color(0.46, 0.41, 0.35)
-const GOLD := Color(0.93, 0.72, 0.30)
 
 const UI := "res://assets/sprites/ui/"
 const CORE := UI + "core/"
 const ICONS := UI + "icons/"
 const CUR := UI + "currency/"
-const BG := "res://assets/backgrounds/home_dream_sky.png"
+const HOME := UI + "home/"
+const BG := "res://assets/backgrounds/home_hub.png"
 const HERO := "res://assets/sprites/cat/cat_happy.png"
 
 # demo/meta values (wire to save data later)
@@ -37,6 +36,7 @@ func _ready() -> void:
 	custom_minimum_size = DESIGN
 	_build_background()
 	_build_top_bar()
+	_build_event_card()
 	_build_hero()
 	_build_side_buttons()
 	_build_upgrade_hint()
@@ -50,20 +50,13 @@ func _build_background() -> void:
 	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
-
-	# mute the biome (handoff: soften saturation/contrast behind UI)
-	var mute := ColorRect.new()
-	mute.color = Color(0.98, 0.96, 0.90, 0.12)
-	mute.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	mute.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(mute)
-
-	# top scrim for legibility behind the chips/plaque
+	# very soft readability wash behind the top bar only (the art center is clean)
 	var scrim := TextureRect.new()
 	var grad := Gradient.new()
-	grad.set_color(0, Color(0.80, 0.87, 0.93, 0.55))
-	grad.set_color(1, Color(0.80, 0.87, 0.93, 0.0))
+	grad.set_color(0, Color(0.99, 0.98, 0.94, 0.42))
+	grad.set_color(1, Color(0.99, 0.98, 0.94, 0.0))
 	var gt := GradientTexture2D.new()
 	gt.gradient = grad
 	gt.fill_from = Vector2(0, 0)
@@ -73,8 +66,7 @@ func _build_background() -> void:
 	scrim.texture = gt
 	scrim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	scrim.stretch_mode = TextureRect.STRETCH_SCALE
-	scrim.position = Vector2.ZERO
-	scrim.size = Vector2(DESIGN.x, 440)
+	scrim.size = Vector2(DESIGN.x, 340)
 	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(scrim)
 
@@ -82,30 +74,27 @@ func _build_background() -> void:
 func _build_top_bar() -> void:
 	_coin_chip = CurrencyChip.new()
 	_coin_chip.configure(CUR + "coin_star.png", star_coins, true)
-	_coin_chip.position = Vector2(40, 92)
+	_coin_chip.position = Vector2(40, 84)
 	add_child(_coin_chip)
 
 	_gem_chip = CurrencyChip.new()
 	_gem_chip.configure(CUR + "gem.png", star_gems, true)
-	_gem_chip.position = Vector2(360, 92)
+	_gem_chip.position = Vector2(360, 84)
 	add_child(_gem_chip)
 
-	# settings, top-right
 	var settings := TextureButton.new()
 	settings.texture_normal = load(CORE + "btn_settings.png")
 	settings.ignore_texture_size = true
 	settings.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	settings.custom_minimum_size = Vector2(112, 112)
 	settings.size = settings.custom_minimum_size
-	settings.position = Vector2(DESIGN.x - 40 - 112, 84)
+	settings.position = Vector2(DESIGN.x - 40 - 112, 78)
 	settings.pressed.connect(func() -> void: settings_pressed.emit())
 	add_child(settings)
 
-	# best distance plaque, centered below chips
-	var plaque := _make_plaque(Vector2(340, 118))
-	plaque.position = Vector2((DESIGN.x - 340) * 0.5, 210)
+	var plaque := _make_plaque(Vector2(340, 116))
+	plaque.position = Vector2((DESIGN.x - 340) * 0.5, 196)
 	add_child(plaque)
-
 	var best := Label.new()
 	best.text = "Best  %s m" % _commas(best_distance)
 	best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -115,30 +104,76 @@ func _build_top_bar() -> void:
 	best.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	plaque.add_child(best)
 
+# --------------------------------------------------------------- event card
+func _build_event_card() -> void:
+	var CW := 436.0
+	var CH := 170.0
+	var card := NinePatchRect.new()
+	card.texture = load(CORE + "panel_small.png")
+	card.patch_margin_left = 40
+	card.patch_margin_right = 40
+	card.patch_margin_top = 40
+	card.patch_margin_bottom = 40
+	card.size = Vector2(CW, CH)
+	card.position = Vector2(40, 322)
+	add_child(card)
+
+	# banner thumbnail (clipped to a rounded-ish square)
+	var clip := Control.new()
+	clip.clip_contents = true
+	clip.size = Vector2(132, 132)
+	clip.position = Vector2(22, 19)
+	card.add_child(clip)
+	var thumb := TextureRect.new()
+	thumb.texture = load(HOME + "event_banner.png")
+	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	thumb.size = Vector2(132, 132)
+	clip.add_child(thumb)
+
+	var title := Label.new()
+	title.text = "Stardust Picnic"
+	title.add_theme_color_override("font_color", INK)
+	title.add_theme_font_size_override("font_size", 32)
+	title.position = Vector2(170, 42)
+	title.size = Vector2(250, 40)
+	card.add_child(title)
+
+	var timer := Label.new()
+	timer.text = "⏱  6d 12h"
+	timer.add_theme_color_override("font_color", INK_SOFT)
+	timer.add_theme_font_size_override("font_size", 28)
+	timer.position = Vector2(170, 92)
+	timer.size = Vector2(240, 36)
+	card.add_child(timer)
+
+	# "Event" ribbon (its art carries the word)
+	var ribbon := TextureRect.new()
+	ribbon.texture = load(CUR + "ribbon_event.png")
+	ribbon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ribbon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ribbon.custom_minimum_size = Vector2(150, 60)
+	ribbon.size = ribbon.custom_minimum_size
+	ribbon.position = Vector2(-10, -18)
+	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(ribbon)
+
+	var hit := Button.new()
+	hit.flat = true
+	hit.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hit.pressed.connect(func() -> void: event_pressed.emit())
+	card.add_child(hit)
+
 # --------------------------------------------------------------------- hero
 func _build_hero() -> void:
-	var center := Vector2(DESIGN.x * 0.5, 860)
+	var center := Vector2(DESIGN.x * 0.5, 960)
 
-	# soft orbit ring behind the cat
-	var ring := Line2D.new()
-	ring.width = 5.0
-	ring.default_color = Color(1, 1, 1, 0.35)
-	ring.closed = true
-	ring.antialiased = true
-	var rx := 330.0
-	var ry := 150.0
-	for i in range(72):
-		var a := TAU * float(i) / 72.0
-		ring.add_point(center + Vector2(cos(a) * rx, sin(a) * ry))
-	add_child(ring)
-
-	# glow puff behind hero
 	var glow := TextureRect.new()
 	glow.texture = load("res://assets/sprites/vfx/sparkle.png")
 	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	glow.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	glow.modulate = Color(1, 1, 1, 0.5)
-	glow.custom_minimum_size = Vector2(560, 560)
+	glow.modulate = Color(1, 1, 1, 0.45)
+	glow.custom_minimum_size = Vector2(540, 540)
 	glow.size = glow.custom_minimum_size
 	glow.position = center - glow.size * 0.5
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -148,7 +183,7 @@ func _build_hero() -> void:
 	hero.texture = load(HERO)
 	hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var hw := 500.0
+	var hw := 470.0
 	hero.custom_minimum_size = Vector2(hw, hw)
 	hero.size = hero.custom_minimum_size
 	hero.position = center - Vector2(hw * 0.5, hw * 0.55)
@@ -156,9 +191,8 @@ func _build_hero() -> void:
 	add_child(hero)
 	_bob(hero)
 
-	# selected cat name plaque under the hero
 	var name_plaque := _make_plaque(Vector2(240, 90))
-	name_plaque.position = Vector2((DESIGN.x - 240) * 0.5, center.y + 180)
+	name_plaque.position = Vector2((DESIGN.x - 240) * 0.5, center.y + 168)
 	add_child(name_plaque)
 	var name_lbl := Label.new()
 	name_lbl.text = current_cat
@@ -171,11 +205,11 @@ func _build_hero() -> void:
 
 # ------------------------------------------------------------- side buttons
 func _build_side_buttons() -> void:
-	var daily := _icon_button(ICONS + "nav_cat.png", "Daily", true)
-	daily.position = Vector2(40, 720)
+	var daily := _icon_button(HOME + "daily.png", "Daily", true)
+	daily.position = Vector2(52, 540)
 	add_child(daily)
-	var quests := _icon_button(ICONS + "nav_starpath.png", "Quests", false)
-	quests.position = Vector2(40, 900)
+	var quests := _icon_button(HOME + "quests.png", "Quests", false)
+	quests.position = Vector2(52, 716)
 	add_child(quests)
 
 # ------------------------------------------------------------ upgrade hint
@@ -186,25 +220,27 @@ func _build_upgrade_hint() -> void:
 	card.patch_margin_right = 30
 	card.patch_margin_top = 18
 	card.patch_margin_bottom = 18
-	card.size = Vector2(640, 92)
-	card.position = Vector2((DESIGN.x - 640) * 0.5, 1360)
+	card.size = Vector2(640, 100)
+	card.position = Vector2((DESIGN.x - 640) * 0.5, 1352)
 	add_child(card)
 
-	var star := TextureRect.new()
-	star.texture = load(ICONS + "nav_starpath.png")
-	star.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	star.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	star.custom_minimum_size = Vector2(64, 64)
-	star.position = Vector2(24, 14)
-	card.add_child(star)
+	var book := TextureRect.new()
+	book.texture = load(HOME + "upgrade_book.png")
+	book.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	book.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	book.custom_minimum_size = Vector2(78, 78)
+	book.size = book.custom_minimum_size
+	book.position = Vector2(20, 11)
+	book.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(book)
 
 	var lbl := Label.new()
 	lbl.text = "Star Path upgrade ready"
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.add_theme_color_override("font_color", INK_SOFT)
 	lbl.add_theme_font_size_override("font_size", 34)
-	lbl.position = Vector2(104, 0)
-	lbl.size = Vector2(500, 92)
+	lbl.position = Vector2(112, 0)
+	lbl.size = Vector2(480, 100)
 	card.add_child(lbl)
 
 	var dot := TextureRect.new()
@@ -212,8 +248,15 @@ func _build_upgrade_hint() -> void:
 	dot.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	dot.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	dot.custom_minimum_size = Vector2(34, 34)
-	dot.position = Vector2(596, 14)
+	dot.position = Vector2(596, 16)
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(dot)
+
+	var hit := Button.new()
+	hit.flat = true
+	hit.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hit.pressed.connect(func() -> void: nav_selected.emit("star_path"))
+	card.add_child(hit)
 
 # ------------------------------------------------------------------ launch
 func _build_launch() -> void:
@@ -227,7 +270,7 @@ func _build_launch() -> void:
 	var h := 208.0
 	launch.custom_minimum_size = Vector2(w, h)
 	launch.size = Vector2(w, h)
-	launch.position = Vector2((DESIGN.x - w) * 0.5, 1500)
+	launch.position = Vector2((DESIGN.x - w) * 0.5, 1494)
 	launch.pressed.connect(func() -> void: launch_pressed.emit())
 	add_child(launch)
 	_pulse(launch)
@@ -275,9 +318,9 @@ func _icon_button(icon_path: String, label: String, notify: bool) -> Control:
 	icon.texture = load(icon_path)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(78, 78)
+	icon.custom_minimum_size = Vector2(88, 88)
 	icon.size = icon.custom_minimum_size
-	icon.position = Vector2((132 - 78) * 0.5, (132 - 78) * 0.5)
+	icon.position = Vector2((132 - 88) * 0.5, (132 - 88) * 0.5)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(icon)
 
@@ -286,8 +329,8 @@ func _icon_button(icon_path: String, label: String, notify: bool) -> Control:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 28)
 	lbl.add_theme_color_override("font_color", INK_SOFT)
-	lbl.position = Vector2(0, 132)
-	lbl.size = Vector2(132, 30)
+	lbl.position = Vector2(-10, 134)
+	lbl.size = Vector2(152, 30)
 	root.add_child(lbl)
 
 	if notify:
