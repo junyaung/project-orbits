@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Raw UXUI source sheets (design input; sliced outputs live in assets/sprites/ui/)
+assets/UXUI/

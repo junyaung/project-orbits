@@ -9,16 +9,18 @@ signal pause_pressed
 signal start_pressed
 
 const INK := Color(0.30, 0.36, 0.46)
-const CREAM := Color(0.98, 0.96, 0.90)
+const HUD := "res://assets/sprites/ui/hud/"
+const CORE := "res://assets/sprites/ui/core/"
+const POPUP := "res://assets/sprites/ui/popup/"
 
 var distance_label: Label
 var star_label: Label
 var heat_fill: ColorRect
-var heat_bg: Panel
-var warning: Panel
+var heat_bg: Control
+var warning: Control
 var warning_label: Label
 var tutorial: Label
-var result_panel: Panel
+var result_panel: Control
 var result_cat: TextureRect
 var result_line: Label
 var result_distance: Label
@@ -40,84 +42,98 @@ func _ready() -> void:
 	_screen = get_viewport().get_visible_rect().size
 	_build()
 
-func _panel_style(bg: Color, border: Color, radius := 24) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(radius)
-	sb.border_color = border
-	sb.set_border_width_all(3)
-	sb.shadow_color = Color(0.4, 0.45, 0.55, 0.18)
-	sb.shadow_size = 8
-	sb.content_margin_left = 20
-	sb.content_margin_right = 20
-	sb.content_margin_top = 10
-	sb.content_margin_bottom = 10
+func _ninepatch(path: String, l := 30, r := 30, t := 22, b := 22) -> NinePatchRect:
+	var np := NinePatchRect.new()
+	np.texture = load(path)
+	np.patch_margin_left = l
+	np.patch_margin_right = r
+	np.patch_margin_top = t
+	np.patch_margin_bottom = b
+	np.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return np
+
+func _capsule_style(tint := Color.WHITE, margin := 34) -> StyleBoxTexture:
+	# 9-sliced blank watercolor capsule usable as a Button background (keeps the
+	# Label). Tint distinguishes normal/hover/pressed without baked text.
+	var sb := StyleBoxTexture.new()
+	sb.texture = load(CORE + "chip_capsule.png")
+	sb.set_texture_margin_all(margin)
+	sb.modulate_color = tint
+	sb.content_margin_left = 28
+	sb.content_margin_right = 28
+	sb.content_margin_top = 16
+	sb.content_margin_bottom = 16
 	return sb
 
 func _build() -> void:
 	var W := _screen.x
 
 	# --- distance (top center, big) ---
-	# The hero number must win the eye first, even when a planet or coin scrolls
-	# behind it. A soft cream "paper halo" (outline) separates it from any
-	# background without a heavy box that would break the watercolor calm.
+	# The hero number must win the eye first. It sits on a soft watercolor plaque
+	# (matching the meta screens) so it reads clearly over any scrolling planet,
+	# with a faint paper outline for extra separation.
+	var dist_plaque := _ninepatch(CORE + "plaque_title_large.png", 90, 90, 40, 40)
+	dist_plaque.size = Vector2(560, 150)
+	dist_plaque.position = Vector2((W - 560) * 0.5, 66)
+	add_child(dist_plaque)
+
 	distance_label = Label.new()
 	distance_label.text = "0m"
-	distance_label.add_theme_font_size_override("font_size", 92)
+	distance_label.add_theme_font_size_override("font_size", 84)
 	distance_label.add_theme_color_override("font_color", INK)
-	distance_label.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.85))
-	distance_label.add_theme_constant_override("outline_size", 14)
+	distance_label.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.6))
+	distance_label.add_theme_constant_override("outline_size", 6)
 	distance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	distance_label.position = Vector2(0, 70)
-	distance_label.size = Vector2(W, 110)
+	distance_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	distance_label.position = Vector2((W - 560) * 0.5, 66)
+	distance_label.size = Vector2(560, 150)
 	add_child(distance_label)
 
 	# --- star counter (top left) ---
-	var star_icon := TextureRect.new()
-	star_icon.texture = load("res://assets/sprites/collectibles/star_coin.png")
-	star_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	star_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	star_icon.size = Vector2(64, 64)
-	star_icon.position = Vector2(40, 80)
-	add_child(star_icon)
+	# Watercolor counter chip (its art already carries the star), number label
+	# sits in the chip's right portion.
+	var star_chip := _ninepatch(HUD + "star_counter_chip.png", 60, 40, 26, 26)
+	star_chip.size = Vector2(210, 84)
+	star_chip.position = Vector2(40, 78)
+	add_child(star_chip)
 
 	star_label = Label.new()
 	star_label.text = "0"
-	star_label.add_theme_font_size_override("font_size", 52)
+	star_label.add_theme_font_size_override("font_size", 48)
 	star_label.add_theme_color_override("font_color", INK)
-	star_label.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.85))
-	star_label.add_theme_constant_override("outline_size", 10)
-	star_label.position = Vector2(112, 84)
+	star_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	star_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	star_label.position = Vector2(108, 78)
+	star_label.size = Vector2(130, 84)
 	add_child(star_label)
 
 	# --- pause button (top right) ---
-	var pause_btn := Button.new()
-	pause_btn.text = "II"
-	pause_btn.add_theme_font_size_override("font_size", 40)
-	pause_btn.add_theme_color_override("font_color", INK)
-	pause_btn.size = Vector2(78, 78)
-	pause_btn.position = Vector2(W - 118, 78)
-	pause_btn.add_theme_stylebox_override("normal", _panel_style(CREAM, Color(0.78, 0.72, 0.6), 39))
-	pause_btn.add_theme_stylebox_override("hover", _panel_style(CREAM, Color(0.78, 0.72, 0.6), 39))
-	pause_btn.add_theme_stylebox_override("pressed", _panel_style(Color(0.9, 0.87, 0.8), Color(0.78, 0.72, 0.6), 39))
+	var pause_btn := TextureButton.new()
+	pause_btn.texture_normal = load(HUD + "btn_pause_square.png")
+	pause_btn.ignore_texture_size = true
+	pause_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	pause_btn.custom_minimum_size = Vector2(96, 96)
+	pause_btn.size = Vector2(96, 96)
+	pause_btn.position = Vector2(W - 128, 72)
 	pause_btn.pressed.connect(func(): pause_pressed.emit())
 	add_child(pause_btn)
 
 	# --- heat bar (under distance) ---
-	heat_bg = Panel.new()
-	heat_bg.size = Vector2(W - 320, 26)
-	heat_bg.position = Vector2(160, 210)
-	heat_bg.add_theme_stylebox_override("panel", _panel_style(Color(0.9, 0.92, 0.95, 0.85), Color(0.72, 0.78, 0.85), 13))
+	# Watercolor pill frame with a rounded fill clipped inside; colour warms as
+	# the planet overheats (calm gold -> coral -> warm red), never harsh.
+	var HB_W := W - 340.0
+	var heat_frame := _ninepatch("res://assets/sprites/ui/currency/progress_frame.png", 30, 30, 18, 18)
+	heat_frame.size = Vector2(HB_W, 40)
+	heat_bg = heat_frame
+	heat_bg.position = Vector2(170, 236)
 	add_child(heat_bg)
 
 	heat_fill = ColorRect.new()
 	heat_fill.color = Color(0.98, 0.82, 0.36)
-	heat_fill.size = Vector2(0, 18)
-	heat_fill.position = Vector2(4, 4)
 	var clip := Control.new()
 	clip.clip_contents = true
-	clip.size = heat_bg.size - Vector2(8, 8)
-	clip.position = Vector2(4, 4)
+	clip.size = Vector2(HB_W - 16, 22)
+	clip.position = Vector2(8, 9)
 	heat_bg.add_child(clip)
 	clip.add_child(heat_fill)
 	heat_fill.size = Vector2(0, clip.size.y)
@@ -125,16 +141,19 @@ func _build() -> void:
 	_heat_clip = clip
 
 	# --- warning banner ---
-	warning = Panel.new()
-	warning.add_theme_stylebox_override("panel", _panel_style(Color(0.97, 0.72, 0.6, 0.95), Color(0.9, 0.55, 0.45), 22))
-	warning.size = Vector2(560, 90)
-	warning.position = Vector2((W - 560) * 0.5, 270)
+	# Uses the red watercolor overheat ribbon from the HUD sheet, soft not harsh.
+	warning = _ninepatch(HUD + "overheat_banner.png", 60, 60, 24, 24)
+	warning.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	warning.size = Vector2(560, 96)
+	warning.position = Vector2((W - 560) * 0.5, 290)
 	warning.visible = false
 	add_child(warning)
 	warning_label = Label.new()
 	warning_label.text = "Planet overheating!"
-	warning_label.add_theme_font_size_override("font_size", 40)
-	warning_label.add_theme_color_override("font_color", Color(0.5, 0.2, 0.15))
+	warning_label.add_theme_font_size_override("font_size", 38)
+	warning_label.add_theme_color_override("font_color", Color(0.99, 0.96, 0.92))
+	warning_label.add_theme_color_override("font_outline_color", Color(0.55, 0.2, 0.15, 0.7))
+	warning_label.add_theme_constant_override("outline_size", 5)
 	warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	warning_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	warning_label.size = warning.size
@@ -173,11 +192,11 @@ func _build_result_card() -> void:
 	var W := _screen.x
 	var CW := 760.0
 	var CH := 940.0
-	result_panel = Panel.new()
-	result_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.80, 0.88, 0.95, 0.98), Color(0.6, 0.72, 0.85), 44))
+	result_panel = _ninepatch(CORE + "panel_large.png", 60, 60, 60, 60)
 	result_panel.size = Vector2(CW, CH)
 	result_panel.position = Vector2((W - CW) * 0.5, (_screen.y - CH) * 0.5)
 	result_panel.visible = false
+	result_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(result_panel)
 
 	# resting cat (memory hook + reassurance)
@@ -256,12 +275,11 @@ func _build_result_card() -> void:
 	retry.text = "Drift Again"
 	retry.add_theme_font_size_override("font_size", 54)
 	retry.add_theme_color_override("font_color", Color(0.4, 0.28, 0.2))
-	retry.size = Vector2(460, 132)
-	retry.position = Vector2((CW - 460) * 0.5, 740)
-	var cap := _panel_style(Color(0.96, 0.90, 0.78), Color(0.8, 0.7, 0.5), 66)
-	retry.add_theme_stylebox_override("normal", cap)
-	retry.add_theme_stylebox_override("hover", cap)
-	retry.add_theme_stylebox_override("pressed", _panel_style(Color(0.9, 0.83, 0.68), Color(0.8, 0.7, 0.5), 66))
+	retry.size = Vector2(480, 150)
+	retry.position = Vector2((CW - 480) * 0.5, 730)
+	retry.add_theme_stylebox_override("normal", _capsule_style(Color(1, 1, 1)))
+	retry.add_theme_stylebox_override("hover", _capsule_style(Color(1, 0.99, 0.94)))
+	retry.add_theme_stylebox_override("pressed", _capsule_style(Color(0.88, 0.84, 0.76)))
 	retry.pressed.connect(func(): retry_pressed.emit())
 	result_panel.add_child(retry)
 
@@ -315,12 +333,11 @@ func _build_start_overlay() -> void:
 	start_btn.text = "Start"
 	start_btn.add_theme_font_size_override("font_size", 58)
 	start_btn.add_theme_color_override("font_color", Color(0.3, 0.4, 0.55))
-	start_btn.size = Vector2(440, 140)
-	start_btn.position = Vector2((W - 440) * 0.5, 860)
-	var s_cap := _panel_style(Color(0.86, 0.92, 0.98), Color(0.58, 0.72, 0.86), 70)
-	start_btn.add_theme_stylebox_override("normal", s_cap)
-	start_btn.add_theme_stylebox_override("hover", s_cap)
-	start_btn.add_theme_stylebox_override("pressed", _panel_style(Color(0.78, 0.86, 0.95), Color(0.58, 0.72, 0.86), 70))
+	start_btn.size = Vector2(460, 150)
+	start_btn.position = Vector2((W - 460) * 0.5, 860)
+	start_btn.add_theme_stylebox_override("normal", _capsule_style(Color(1, 1, 1)))
+	start_btn.add_theme_stylebox_override("hover", _capsule_style(Color(1, 0.99, 0.94)))
+	start_btn.add_theme_stylebox_override("pressed", _capsule_style(Color(0.88, 0.84, 0.76)))
 	start_btn.pressed.connect(func(): start_pressed.emit())
 	start_overlay.add_child(start_btn)
 
@@ -399,7 +416,7 @@ func _build_shield_hud() -> void:
 	shield_hud.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	shield_hud.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	shield_hud.size = Vector2(70, 70)
-	shield_hud.position = Vector2(37, 158)
+	shield_hud.position = Vector2(48, 184)
 	shield_hud.visible = false
 	add_child(shield_hud)
 
