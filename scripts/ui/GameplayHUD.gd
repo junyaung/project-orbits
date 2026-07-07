@@ -1,0 +1,545 @@
+extends CanvasLayer
+class_name GameplayHUD
+## Screen-fixed HUD: stars (top-left), distance (top-center), pause (top-right),
+## heat bar, overheat warning banner, tutorial hint, and the result card.
+## Follows the bible: big readable numbers, corners for HUD, calm result card.
+
+signal retry_pressed
+signal pause_pressed
+signal start_pressed
+
+const INK := Color(0.30, 0.36, 0.46)
+const CREAM := Color(0.98, 0.96, 0.90)
+
+var distance_label: Label
+var star_label: Label
+var heat_fill: ColorRect
+var heat_bg: Panel
+var warning: Panel
+var warning_label: Label
+var tutorial: Label
+var result_panel: Panel
+var result_cat: TextureRect
+var result_line: Label
+var result_distance: Label
+var result_sub: Label
+var result_best: Panel
+var start_overlay: Control
+var start_best: Label
+var indicator: Node2D
+var _ind_dot: Polygon2D
+var _ind_t := 0.0
+var shield_hud: TextureRect
+var _reveal_group: Array[Control] = []
+var _cat_bob: Tween
+var _screen := Vector2(1080, 1920)
+var _tut_shown := true
+
+func _ready() -> void:
+	layer = 10
+	_screen = get_viewport().get_visible_rect().size
+	_build()
+
+func _panel_style(bg: Color, border: Color, radius := 24) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.set_corner_radius_all(radius)
+	sb.border_color = border
+	sb.set_border_width_all(3)
+	sb.shadow_color = Color(0.4, 0.45, 0.55, 0.18)
+	sb.shadow_size = 8
+	sb.content_margin_left = 20
+	sb.content_margin_right = 20
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	return sb
+
+func _build() -> void:
+	var W := _screen.x
+
+	# --- distance (top center, big) ---
+	# The hero number must win the eye first, even when a planet or coin scrolls
+	# behind it. A soft cream "paper halo" (outline) separates it from any
+	# background without a heavy box that would break the watercolor calm.
+	distance_label = Label.new()
+	distance_label.text = "0m"
+	distance_label.add_theme_font_size_override("font_size", 92)
+	distance_label.add_theme_color_override("font_color", INK)
+	distance_label.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.85))
+	distance_label.add_theme_constant_override("outline_size", 14)
+	distance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	distance_label.position = Vector2(0, 70)
+	distance_label.size = Vector2(W, 110)
+	add_child(distance_label)
+
+	# --- star counter (top left) ---
+	var star_icon := TextureRect.new()
+	star_icon.texture = load("res://assets/sprites/collectibles/star_coin.png")
+	star_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	star_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	star_icon.size = Vector2(64, 64)
+	star_icon.position = Vector2(40, 80)
+	add_child(star_icon)
+
+	star_label = Label.new()
+	star_label.text = "0"
+	star_label.add_theme_font_size_override("font_size", 52)
+	star_label.add_theme_color_override("font_color", INK)
+	star_label.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.85))
+	star_label.add_theme_constant_override("outline_size", 10)
+	star_label.position = Vector2(112, 84)
+	add_child(star_label)
+
+	# --- pause button (top right) ---
+	var pause_btn := Button.new()
+	pause_btn.text = "II"
+	pause_btn.add_theme_font_size_override("font_size", 40)
+	pause_btn.add_theme_color_override("font_color", INK)
+	pause_btn.size = Vector2(78, 78)
+	pause_btn.position = Vector2(W - 118, 78)
+	pause_btn.add_theme_stylebox_override("normal", _panel_style(CREAM, Color(0.78, 0.72, 0.6), 39))
+	pause_btn.add_theme_stylebox_override("hover", _panel_style(CREAM, Color(0.78, 0.72, 0.6), 39))
+	pause_btn.add_theme_stylebox_override("pressed", _panel_style(Color(0.9, 0.87, 0.8), Color(0.78, 0.72, 0.6), 39))
+	pause_btn.pressed.connect(func(): pause_pressed.emit())
+	add_child(pause_btn)
+
+	# --- heat bar (under distance) ---
+	heat_bg = Panel.new()
+	heat_bg.size = Vector2(W - 320, 26)
+	heat_bg.position = Vector2(160, 210)
+	heat_bg.add_theme_stylebox_override("panel", _panel_style(Color(0.9, 0.92, 0.95, 0.85), Color(0.72, 0.78, 0.85), 13))
+	add_child(heat_bg)
+
+	heat_fill = ColorRect.new()
+	heat_fill.color = Color(0.98, 0.82, 0.36)
+	heat_fill.size = Vector2(0, 18)
+	heat_fill.position = Vector2(4, 4)
+	var clip := Control.new()
+	clip.clip_contents = true
+	clip.size = heat_bg.size - Vector2(8, 8)
+	clip.position = Vector2(4, 4)
+	heat_bg.add_child(clip)
+	clip.add_child(heat_fill)
+	heat_fill.size = Vector2(0, clip.size.y)
+	heat_fill.position = Vector2.ZERO
+	_heat_clip = clip
+
+	# --- warning banner ---
+	warning = Panel.new()
+	warning.add_theme_stylebox_override("panel", _panel_style(Color(0.97, 0.72, 0.6, 0.95), Color(0.9, 0.55, 0.45), 22))
+	warning.size = Vector2(560, 90)
+	warning.position = Vector2((W - 560) * 0.5, 270)
+	warning.visible = false
+	add_child(warning)
+	warning_label = Label.new()
+	warning_label.text = "Planet overheating!"
+	warning_label.add_theme_font_size_override("font_size", 40)
+	warning_label.add_theme_color_override("font_color", Color(0.5, 0.2, 0.15))
+	warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	warning_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	warning_label.size = warning.size
+	warning.add_child(warning_label)
+
+	# --- tutorial hint (bottom) ---
+	tutorial = Label.new()
+	tutorial.text = "Hold to orbit   ·   Release to launch"
+	tutorial.add_theme_font_size_override("font_size", 40)
+	tutorial.add_theme_color_override("font_color", INK)
+	tutorial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tutorial.size = Vector2(W, 60)
+	tutorial.position = Vector2(0, _screen.y - 220)
+	tutorial.visible = false   # shown once the run begins; the hint is on the start card first
+	add_child(tutorial)
+
+	# --- result card (hidden) ---
+	_build_result_card()
+
+	# --- start overlay (visible until the player begins) ---
+	_build_start_overlay()
+
+	# --- off-screen next-planet indicator ---
+	_build_indicator()
+
+	# --- shield status (top-left, below the star count) ---
+	_build_shield_hud()
+
+var _heat_clip: Control
+
+func _build_result_card() -> void:
+	# Eye-order by design: the sleeping cat (safe, an emotional anchor) reads
+	# first, then the hero distance, then the small stats, then the one clear
+	# action. The card should leave the player feeling "lonely-but-safe, gentle"
+	# rather than punished - a quiet pause, not a game-over slam.
+	var W := _screen.x
+	var CW := 760.0
+	var CH := 940.0
+	result_panel = Panel.new()
+	result_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.80, 0.88, 0.95, 0.98), Color(0.6, 0.72, 0.85), 44))
+	result_panel.size = Vector2(CW, CH)
+	result_panel.position = Vector2((W - CW) * 0.5, (_screen.y - CH) * 0.5)
+	result_panel.visible = false
+	add_child(result_panel)
+
+	# resting cat (memory hook + reassurance)
+	result_cat = TextureRect.new()
+	result_cat.texture = load("res://assets/sprites/cat/cat_sleepy.png")
+	result_cat.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	result_cat.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	result_cat.size = Vector2(300, 220)
+	result_cat.position = Vector2((CW - 300) * 0.5, 40)
+	result_panel.add_child(result_cat)
+
+	var title := Label.new()
+	title.text = "Splashdown"
+	title.add_theme_font_size_override("font_size", 66)
+	title.add_theme_color_override("font_color", INK)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size = Vector2(CW, 84)
+	title.position = Vector2(0, 268)
+	result_panel.add_child(title)
+
+	# gentle poetic line - conveys the cause AND the walk-away emotion (2 lines)
+	result_line = Label.new()
+	result_line.add_theme_font_size_override("font_size", 34)
+	result_line.add_theme_color_override("font_color", Color(0.42, 0.48, 0.58))
+	result_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	result_line.size = Vector2(CW - 120, 96)
+	result_line.position = Vector2(60, 356)
+	result_panel.add_child(result_line)
+
+	# NEW BEST - a thin gold pill badge, only when earned, sat just above the
+	# hero distance. Small warm reward beat; ~28% the size of the distance number.
+	var BADGE_W := 280.0
+	var BADGE_H := 56.0
+	result_best = Panel.new()
+	var badge_sb := StyleBoxFlat.new()
+	badge_sb.bg_color = Color(0.99, 0.95, 0.82, 0.9)          # very light cream-gold
+	badge_sb.set_corner_radius_all(int(BADGE_H * 0.5))          # full pill
+	badge_sb.border_color = Color(0.86, 0.72, 0.42, 0.55)       # faint gold
+	badge_sb.set_border_width_all(1)
+	result_best.add_theme_stylebox_override("panel", badge_sb)
+	result_best.size = Vector2(BADGE_W, BADGE_H)
+	result_best.position = Vector2((CW - BADGE_W) * 0.5, 468)
+	result_best.visible = false
+	result_panel.add_child(result_best)
+
+	var badge_label := Label.new()
+	badge_label.text = "✦  NEW BEST  ✦"
+	badge_label.add_theme_font_size_override("font_size", 24)   # ~28% of the 84px distance
+	badge_label.add_theme_color_override("font_color", Color(0.72, 0.54, 0.24))  # muted amber
+	badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge_label.size = Vector2(BADGE_W, BADGE_H)
+	result_best.add_child(badge_label)
+
+	# hero distance
+	result_distance = Label.new()
+	result_distance.add_theme_font_size_override("font_size", 84)
+	result_distance.add_theme_color_override("font_color", INK)
+	result_distance.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_distance.size = Vector2(CW, 100)
+	result_distance.position = Vector2(0, 540)
+	result_panel.add_child(result_distance)
+
+	# small muted stats row
+	result_sub = Label.new()
+	result_sub.add_theme_font_size_override("font_size", 36)
+	result_sub.add_theme_color_override("font_color", Color(0.5, 0.56, 0.64))
+	result_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_sub.size = Vector2(CW, 50)
+	result_sub.position = Vector2(0, 654)
+	result_panel.add_child(result_sub)
+
+	# the one clear, inviting action (bible: retry is biggest & easiest)
+	var retry := Button.new()
+	retry.text = "Drift Again"
+	retry.add_theme_font_size_override("font_size", 54)
+	retry.add_theme_color_override("font_color", Color(0.4, 0.28, 0.2))
+	retry.size = Vector2(460, 132)
+	retry.position = Vector2((CW - 460) * 0.5, 740)
+	var cap := _panel_style(Color(0.96, 0.90, 0.78), Color(0.8, 0.7, 0.5), 66)
+	retry.add_theme_stylebox_override("normal", cap)
+	retry.add_theme_stylebox_override("hover", cap)
+	retry.add_theme_stylebox_override("pressed", _panel_style(Color(0.9, 0.83, 0.68), Color(0.8, 0.7, 0.5), 66))
+	retry.pressed.connect(func(): retry_pressed.emit())
+	result_panel.add_child(retry)
+
+	_reveal_group = [result_cat, title, result_line, result_distance, result_sub, retry]
+
+func _build_start_overlay() -> void:
+	# Calm invitation, not a slam. A light scrim keeps the idling world visible
+	# behind it, the title carries the game's one strong image, and the control
+	# is stated plainly - the player leaves the screen already knowing what to do.
+	var W := _screen.x
+	start_overlay = Control.new()
+	start_overlay.size = _screen
+	start_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(start_overlay)
+
+	var scrim := ColorRect.new()
+	scrim.color = Color(0.88, 0.92, 0.96, 0.45)
+	scrim.size = _screen
+	start_overlay.add_child(scrim)
+
+	var title := Label.new()
+	title.text = "ORBITS"
+	title.add_theme_font_size_override("font_size", 128)
+	title.add_theme_color_override("font_color", INK)
+	title.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.9))
+	title.add_theme_constant_override("outline_size", 16)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size = Vector2(W, 150)
+	title.position = Vector2(0, 430)
+	start_overlay.add_child(title)
+
+	var tagline := Label.new()
+	tagline.text = "a cat, a manhole cover, and the whole sky"
+	tagline.add_theme_font_size_override("font_size", 36)
+	tagline.add_theme_color_override("font_color", Color(0.42, 0.48, 0.58))
+	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tagline.size = Vector2(W, 50)
+	tagline.position = Vector2(0, 600)
+	start_overlay.add_child(tagline)
+
+	var hint := Label.new()
+	hint.text = "Hold to orbit   ·   Release to launch"
+	hint.add_theme_font_size_override("font_size", 38)
+	hint.add_theme_color_override("font_color", INK)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.size = Vector2(W, 50)
+	hint.position = Vector2(0, 720)
+	start_overlay.add_child(hint)
+
+	var start_btn := Button.new()
+	start_btn.text = "Start"
+	start_btn.add_theme_font_size_override("font_size", 58)
+	start_btn.add_theme_color_override("font_color", Color(0.3, 0.4, 0.55))
+	start_btn.size = Vector2(440, 140)
+	start_btn.position = Vector2((W - 440) * 0.5, 860)
+	var s_cap := _panel_style(Color(0.86, 0.92, 0.98), Color(0.58, 0.72, 0.86), 70)
+	start_btn.add_theme_stylebox_override("normal", s_cap)
+	start_btn.add_theme_stylebox_override("hover", s_cap)
+	start_btn.add_theme_stylebox_override("pressed", _panel_style(Color(0.78, 0.86, 0.95), Color(0.58, 0.72, 0.86), 70))
+	start_btn.pressed.connect(func(): start_pressed.emit())
+	start_overlay.add_child(start_btn)
+
+	start_best = Label.new()
+	start_best.add_theme_font_size_override("font_size", 34)
+	start_best.add_theme_color_override("font_color", Color(0.55, 0.6, 0.68))
+	start_best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	start_best.size = Vector2(W, 44)
+	start_best.position = Vector2(0, 1030)
+	start_best.visible = false
+	start_overlay.add_child(start_best)
+
+	# gentle breathing on the title so the screen feels alive while waiting
+	var tw := create_tween().set_loops()
+	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(title, "position:y", 424.0, 1.8)
+	tw.tween_property(title, "position:y", 430.0, 1.8)
+
+func _poly_circle(r: float, seg: int) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in seg:
+		var a := TAU * float(i) / float(seg)
+		pts.append(Vector2(cos(a) * r, sin(a) * r))
+	return pts
+
+func _build_indicator() -> void:
+	# A soft cream "look here" chip: a planet-colored dot inside a paper disc,
+	# with a chevron pointing toward the off-screen planet. Calm, not alarming -
+	# it only answers "which way do I sling?"
+	indicator = Node2D.new()
+	indicator.z_index = 6
+	indicator.visible = false
+	add_child(indicator)
+
+	var chevron := Polygon2D.new()   # drawn first so the disc sits over its base
+	chevron.polygon = PackedVector2Array([Vector2(54, 0), Vector2(34, -16), Vector2(34, 16)])
+	chevron.color = Color(0.40, 0.50, 0.63, 0.95)
+	indicator.add_child(chevron)
+
+	var ring := Polygon2D.new()
+	ring.polygon = _poly_circle(35.0, 28)
+	ring.color = Color(0.42, 0.52, 0.64, 0.5)
+	indicator.add_child(ring)
+
+	var disc := Polygon2D.new()
+	disc.polygon = _poly_circle(30.0, 28)
+	disc.color = Color(0.98, 0.97, 0.92, 0.97)
+	indicator.add_child(disc)
+
+	_ind_dot = Polygon2D.new()
+	_ind_dot.polygon = _poly_circle(14.0, 22)
+	_ind_dot.color = Color(0.6, 0.72, 0.5)
+	indicator.add_child(_ind_dot)
+
+func set_planet_indicator(show_it: bool, pos := Vector2.ZERO, angle := 0.0, col := Color.WHITE) -> void:
+	if not indicator:
+		return
+	indicator.visible = show_it
+	if show_it:
+		indicator.position = pos
+		indicator.rotation = angle
+		_ind_dot.color = col
+
+func _process(delta: float) -> void:
+	# gentle breathing so the indicator reads as "look here" without shouting
+	if indicator and indicator.visible:
+		_ind_t += delta
+		indicator.scale = Vector2.ONE * (1.0 + sin(_ind_t * 3.2) * 0.07)
+
+## Shield HUD icon: sits in the left status column under the star count, using
+## the same sprite as the pickup so the player links "I grabbed that bubble" to
+## "I'm protected." Only visible while a shield is held (no clutter otherwise).
+func _build_shield_hud() -> void:
+	shield_hud = TextureRect.new()
+	shield_hud.texture = load("res://assets/sprites/collectibles/shield.png")
+	shield_hud.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shield_hud.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	shield_hud.size = Vector2(70, 70)
+	shield_hud.position = Vector2(37, 158)
+	shield_hud.visible = false
+	add_child(shield_hud)
+
+func set_shield(on: bool) -> void:
+	if not shield_hud:
+		return
+	shield_hud.pivot_offset = shield_hud.size * 0.5
+	if on:
+		shield_hud.visible = true
+		shield_hud.modulate.a = 1.0
+		shield_hud.scale = Vector2(0.5, 0.5)
+		var tw := create_tween()
+		tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(shield_hud, "scale", Vector2.ONE, 0.25)
+	elif shield_hud.visible:
+		# pop + fade out so "shield broke" reads, then reset for next time
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(shield_hud, "scale", Vector2(1.4, 1.4), 0.16)
+		tw.tween_property(shield_hud, "modulate:a", 0.0, 0.16)
+		tw.chain().tween_callback(func():
+			shield_hud.visible = false
+			shield_hud.scale = Vector2.ONE
+			shield_hud.modulate.a = 1.0)
+
+func set_start_best(best: int) -> void:
+	if best > 0 and start_best:
+		start_best.text = "best   %d m" % best
+		start_best.visible = true
+
+func begin_run() -> void:
+	tutorial.visible = true
+	var tw := create_tween()
+	tw.tween_property(start_overlay, "modulate:a", 0.0, 0.25)
+	tw.tween_callback(start_overlay.queue_free)
+
+func hide_start_now() -> void:
+	if start_overlay:
+		start_overlay.queue_free()
+
+func set_distance(v: float) -> void:
+	distance_label.text = str(int(v)) + "m"
+
+func set_stars(n: int) -> void:
+	star_label.text = str(n)
+
+func set_heat(v: float) -> void:
+	v = clamp(v, 0.0, 1.0)
+	if _heat_clip:
+		heat_fill.size = Vector2(_heat_clip.size.x * v, _heat_clip.size.y)
+	if v < 0.45:
+		heat_fill.color = Color(0.98, 0.82, 0.36)      # calm yellow
+	elif v < 0.78:
+		heat_fill.color = Color(0.97, 0.62, 0.42)      # peach / coral
+	else:
+		heat_fill.color = Color(0.93, 0.38, 0.32)      # warm red
+	if v > 0.78:
+		show_warning("Planet overheating!")
+	else:
+		warning.visible = false
+
+func show_warning(text: String) -> void:
+	if warning.visible and warning_label.text == text:
+		return
+	warning_label.text = text
+	warning.visible = true
+	warning.scale = Vector2(0.94, 0.94)
+	warning.pivot_offset = warning.size * 0.5
+	var tw := create_tween()
+	tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(warning, "scale", Vector2.ONE, 0.18)
+
+func hide_tutorial() -> void:
+	if not _tut_shown:
+		return
+	_tut_shown = false
+	var tw := create_tween()
+	tw.tween_property(tutorial, "modulate:a", 0.0, 0.5)
+
+## Map the blunt failure cause to a gentle line that still tells the player
+## what happened, but lands the game's "lonely-but-safe, poetic" feeling and
+## leaves a small story to resolve (memory encoding).
+func _poetic_line(reason: String) -> String:
+	var r := reason.to_lower()
+	if "overheat" in r:
+		return "The little planet needed to cool down.\nRest here a while."
+	elif "planet" in r or "tumble" in r or "crash" in r:
+		return "Straight through the middle!\nPlanets are for orbiting, little one."
+	elif "meteor" in r or "rock" in r or "bump" in r:
+		return "Space is big and bumpy.\nThe cat is only a little surprised."
+	elif "space" in r or "drift" in r:
+		return "Off into the quiet blue —\na new planet waits."
+	elif "earth" in r or "fell" in r or "fall" in r:
+		return "Back to the ground, for now.\nThe sky will still be there tomorrow."
+	return "The cat drifts on,\ndreaming of the next planet."
+
+func show_result(distance: int, stars: int, perfects: int, best: int, reason: String) -> void:
+	warning.visible = false
+	var is_best := distance >= best and distance > 0
+
+	result_line.text = _poetic_line(reason)
+	result_distance.text = "%d m" % distance
+	result_sub.text = "★ %d      ✧ %d perfect" % [stars, perfects]
+	result_best.visible = is_best
+
+	result_panel.visible = true
+	result_panel.scale = Vector2(0.88, 0.88)
+	result_panel.pivot_offset = result_panel.size * 0.5
+	var tw := create_tween()
+	tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(result_panel, "scale", Vector2.ONE, 0.30)
+
+	# staggered reveal - the whole thing feels composed, not dumped on screen
+	for i in _reveal_group.size():
+		var node := _reveal_group[i]
+		var base_y := node.position.y
+		node.modulate.a = 0.0
+		node.position.y = base_y + 14.0
+		var t := create_tween()
+		t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_interval(0.12 + i * 0.07)
+		t.set_parallel(true)
+		t.tween_property(node, "modulate:a", 1.0, 0.28)
+		t.tween_property(node, "position:y", base_y, 0.28)
+
+	# the resting cat breathes - a small sign of life = reassurance.
+	# Uses the known card-relative base Y (40) so it doesn't fight the reveal.
+	if _cat_bob:
+		_cat_bob.kill()
+	var cat_base := 40.0
+	_cat_bob = create_tween().set_loops()
+	_cat_bob.tween_interval(0.7)
+	_cat_bob.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_cat_bob.tween_property(result_cat, "position:y", cat_base + 8.0, 1.4)
+	_cat_bob.tween_property(result_cat, "position:y", cat_base, 1.4)
+
+	if is_best:
+		result_best.pivot_offset = result_best.size * 0.5
+		var bt := create_tween()
+		bt.tween_interval(0.55)
+		bt.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		bt.tween_property(result_best, "scale", Vector2(1.12, 1.12), 0.18)
+		bt.tween_property(result_best, "scale", Vector2.ONE, 0.16)

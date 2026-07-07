@@ -1,0 +1,31 @@
+[gd_scene load_steps=3 format=3 uid="uid://banimbiomebg00001"]
+
+[ext_resource type="Script" path="res://scripts/backgrounds/AnimatedBiomeBackground.gd" id="1_bg"]
+[ext_resource type="Texture2D" uid="uid://hqmo843hkpb0" path="res://assets/backgrounds/map_tachyon drift_18.png" id="2_base"]
+
+[node name="AnimatedBiomeBackground" type="CanvasLayer"]
+layer = -10
+script = ExtResource("1_bg")
+biome_type = 2
+base_texture = ExtResource("2_base")
+
+[node name="BackgroundRoot" type="Node2D" parent="."]
+
+[node name="BaseBackground" type="Sprite2D" parent="BackgroundRoot"]
+
+[node name="OverlayLayerA" type="Sprite2D" parent="BackgroundRoot"]
+
+[node name="OverlayLayerB" type="Sprite2D" parent="BackgroundRoot"]
+
+[node name="AccentContainer" type="Node2D" parent="BackgroundRoot"]
+
+[node name="SlowDustParticles" type="GPUParticles2D" parent="BackgroundRoot"]
+
+[node name="FastStreakParticles" type="GPUParticles2D" parent="BackgroundRoot"]
+
+[node name="GlowParticles" type="GPUParticles2D" parent="BackgroundRoot"]
+
+[node name="SoftTint" type="ColorRect" parent="BackgroundRoot"]
+color = Color(0, 0, 0, 0)
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="BackgroundRoot"]

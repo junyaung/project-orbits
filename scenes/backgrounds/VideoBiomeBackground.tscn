@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://crnkqrdft4aey"]
+
+[ext_resource type="Script" path="res://scripts/backgrounds/VideoBiomeBackground.gd" id="1_vid"]
+[ext_resource type="VideoStream" uid="uid://dqy47ivpkd3se" path="res://assets/backgrounds/tachyon_drift_fade.ogv" id="2_ogv"]
+
+[node name="VideoBiomeBackground" type="CanvasLayer"]
+layer = -10
+script = ExtResource("1_vid")
+video_stream = ExtResource("2_ogv")
+
+[node name="VideoStreamPlayer" type="VideoStreamPlayer" parent="."]
+offset_right = 1080.0
+offset_bottom = 1920.0
+expand = true
+autoplay = true
+loop = true
+stream = ExtResource("2_ogv")
