@@ -115,6 +115,7 @@ func _ready() -> void:
 
 	hud = GameplayHUD.new()
 	hud.retry_pressed.connect(func(): get_tree().reload_current_scene())
+	hud.home_pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/ui/Main.tscn"))
 	hud.pause_pressed.connect(_toggle_pause)
 	hud.start_pressed.connect(_begin)
 	add_child(hud)

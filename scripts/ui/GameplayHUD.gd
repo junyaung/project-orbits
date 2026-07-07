@@ -7,6 +7,7 @@ class_name GameplayHUD
 signal retry_pressed
 signal pause_pressed
 signal start_pressed
+signal home_pressed
 
 const INK := Color(0.30, 0.36, 0.46)
 const HUD := "res://assets/sprites/ui/hud/"
@@ -275,15 +276,28 @@ func _build_result_card() -> void:
 	retry.text = "Drift Again"
 	retry.add_theme_font_size_override("font_size", 54)
 	retry.add_theme_color_override("font_color", Color(0.4, 0.28, 0.2))
-	retry.size = Vector2(480, 150)
-	retry.position = Vector2((CW - 480) * 0.5, 730)
+	retry.size = Vector2(480, 132)
+	retry.position = Vector2((CW - 480) * 0.5, 700)
 	retry.add_theme_stylebox_override("normal", _capsule_style(Color(1, 1, 1)))
 	retry.add_theme_stylebox_override("hover", _capsule_style(Color(1, 0.99, 0.94)))
 	retry.add_theme_stylebox_override("pressed", _capsule_style(Color(0.88, 0.84, 0.76)))
 	retry.pressed.connect(func(): retry_pressed.emit())
 	result_panel.add_child(retry)
 
-	_reveal_group = [result_cat, title, result_line, result_distance, result_sub, retry]
+	# secondary: back to the Home hub
+	var home := Button.new()
+	home.text = "Home"
+	home.add_theme_font_size_override("font_size", 40)
+	home.add_theme_color_override("font_color", Color(0.42, 0.48, 0.58))
+	home.size = Vector2(300, 84)
+	home.position = Vector2((CW - 300) * 0.5, 848)
+	home.add_theme_stylebox_override("normal", _capsule_style(Color(0.86, 0.90, 0.96)))
+	home.add_theme_stylebox_override("hover", _capsule_style(Color(0.92, 0.95, 0.99)))
+	home.add_theme_stylebox_override("pressed", _capsule_style(Color(0.76, 0.82, 0.90)))
+	home.pressed.connect(func(): home_pressed.emit())
+	result_panel.add_child(home)
+
+	_reveal_group = [result_cat, title, result_line, result_distance, result_sub, retry, home]
 
 func _build_start_overlay() -> void:
 	# Calm invitation, not a slam. A light scrim keeps the idling world visible
