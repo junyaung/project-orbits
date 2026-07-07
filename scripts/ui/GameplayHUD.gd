@@ -33,6 +33,7 @@ var indicator: Node2D
 var _ind_dot: Polygon2D
 var _ind_t := 0.0
 var shield_hud: TextureRect
+var shield_count_label: Label
 var _reveal_group: Array[Control] = []
 var _cat_bob: Tween
 var _screen := Vector2(1080, 1920)
@@ -423,7 +424,9 @@ func _process(delta: float) -> void:
 
 ## Shield HUD icon: sits in the left status column under the star count, using
 ## the same sprite as the pickup so the player links "I grabbed that bubble" to
-## "I'm protected." Only visible while a shield is held (no clutter otherwise).
+## "I'm protected." Only visible while at least one shield is held (no clutter
+## otherwise). A small count badge shows how many hits are still banked, so a
+## stacked pickup reads as "I can take 2 more hits", not just "I'm protected".
 func _build_shield_hud() -> void:
 	shield_hud = TextureRect.new()
 	shield_hud.texture = load("res://assets/sprites/collectibles/shield.png")
@@ -434,27 +437,56 @@ func _build_shield_hud() -> void:
 	shield_hud.visible = false
 	add_child(shield_hud)
 
-func set_shield(on: bool) -> void:
+	shield_count_label = Label.new()
+	shield_count_label.add_theme_font_size_override("font_size", 32)
+	shield_count_label.add_theme_color_override("font_color", INK)
+	shield_count_label.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.9))
+	shield_count_label.add_theme_constant_override("outline_size", 6)
+	shield_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	shield_count_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	shield_count_label.position = shield_hud.position + Vector2(38, 40)
+	shield_count_label.size = Vector2(40, 40)
+	shield_count_label.visible = false
+	add_child(shield_count_label)
+
+## Reflect the current shield charge count in the HUD. 0 hides the icon
+## (with a pop + fade so "shield broke" reads clearly); any positive count
+## shows the icon with that number of remaining hits, bump-pulsing on change.
+func set_shield_count(n: int) -> void:
 	if not shield_hud:
 		return
 	shield_hud.pivot_offset = shield_hud.size * 0.5
-	if on:
+	if n <= 0:
+		shield_count_label.visible = false
+		if shield_hud.visible:
+			# pop + fade out so "shield broke" reads, then reset for next time
+			var tw := create_tween()
+			tw.set_parallel(true)
+			tw.tween_property(shield_hud, "scale", Vector2(1.4, 1.4), 0.16)
+			tw.tween_property(shield_hud, "modulate:a", 0.0, 0.16)
+			tw.chain().tween_callback(func():
+				shield_hud.visible = false
+				shield_hud.scale = Vector2.ONE
+				shield_hud.modulate.a = 1.0)
+		return
+
+	shield_count_label.text = str(n)
+	shield_count_label.visible = true
+
+	if not shield_hud.visible:
 		shield_hud.visible = true
 		shield_hud.modulate.a = 1.0
 		shield_hud.scale = Vector2(0.5, 0.5)
 		var tw := create_tween()
 		tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tw.tween_property(shield_hud, "scale", Vector2.ONE, 0.25)
-	elif shield_hud.visible:
-		# pop + fade out so "shield broke" reads, then reset for next time
+	else:
+		# already visible: a quick bump-pulse acknowledges the count changing
+		# (gained another charge, or spent one absorbing a hit)
 		var tw := create_tween()
-		tw.set_parallel(true)
-		tw.tween_property(shield_hud, "scale", Vector2(1.4, 1.4), 0.16)
-		tw.tween_property(shield_hud, "modulate:a", 0.0, 0.16)
-		tw.chain().tween_callback(func():
-			shield_hud.visible = false
-			shield_hud.scale = Vector2.ONE
-			shield_hud.modulate.a = 1.0)
+		tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(shield_hud, "scale", Vector2(1.15, 1.15), 0.10)
+		tw.tween_property(shield_hud, "scale", Vector2.ONE, 0.14)
 
 func set_start_best(best: int) -> void:
 	if best > 0 and start_best:

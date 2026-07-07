@@ -53,6 +53,16 @@ const PLANET_COLORS := {
 @export var use_video_background := false
 const VIDEO_BG := preload("res://scenes/backgrounds/VideoBiomeBackground.tscn")
 
+## First-biome background: Upper Sky (start altitude) crossfade-stitched into
+## Dream Sky (revealed by climbing), per the handoff's vertical-segment rule
+## (§5.3). Lives in world-space so the camera's climb scrolls it for free -
+## no manual scroll code needed. The painted gradient sky (_build_sky) stays
+## on a CanvasLayer far behind it as a fallback once the player climbs past
+## the stitched art's height.
+@export var use_stitched_sky_background := true
+const STITCHED_SKY_TEX := preload("res://assets/backgrounds/stitched_upper_dream_sky.png")
+const STITCHED_SKY_BOTTOM_MARGIN := 300.0   # world px of Upper Sky visible below the start line
+
 var cat: CatVehicle
 var camera: Camera2D
 var hud: GameplayHUD
@@ -76,7 +86,7 @@ var heat := 0.0
 var distance := 0.0
 var stars := 0
 var perfects := 0
-var has_shield := false
+var shield_count := 0   # stacks: each hazard hit consumes one charge
 var best := 0
 
 var started := false
@@ -100,6 +110,9 @@ func _ready() -> void:
 		_build_sky()
 	world = Node2D.new()
 	add_child(world)
+
+	if use_stitched_sky_background and not use_video_background:
+		_build_stitched_sky()
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START
@@ -159,6 +172,21 @@ func _build_sky() -> void:
 		c.position = Vector2(randf_range(0, SCREEN.x), randf_range(120, SCREEN.y - 200))
 		c.set_meta("spd", randf_range(6.0, 16.0))
 		clouds.add_child(c)
+
+## World-space sprite, so the camera's vertical climb scrolls it naturally.
+## Bottom edge sits a little below the cat's start line (Upper Sky visible
+## immediately); the art extends upward into Dream Sky as the player climbs.
+func _build_stitched_sky() -> void:
+	var tex := STITCHED_SKY_TEX
+	if tex == null:
+		return
+	var sky := Sprite2D.new()
+	sky.texture = tex
+	sky.centered = false
+	var bottom_y := CAT_START.y + STITCHED_SKY_BOTTOM_MARGIN
+	sky.position = Vector2(0, bottom_y - tex.get_height())
+	sky.z_index = -100   # behind planets/hazards/pickups, in front of the CanvasLayer gradient
+	world.add_child(sky)
 
 func _make_cloud() -> Node2D:
 	var n := Node2D.new()
@@ -525,9 +553,9 @@ func _check_pickups() -> void:
 				cat.pop()
 				_burst(pk.position, "twinkle", Color(1.0, 0.85, 0.45), 10, 130, 0.6)
 			else:
-				has_shield = true
+				shield_count += 1
 				cat.set_shield(true)
-				hud.set_shield(true)
+				hud.set_shield_count(shield_count)
 				_burst(pk.position, "sparkle", Color(0.7, 0.9, 1.0), 12, 120, 0.6)
 			pk.collect()
 
@@ -536,10 +564,11 @@ func _check_hazards() -> void:
 		if not is_instance_valid(hz):
 			continue
 		if cat.position.distance_to(hz.position) < cat.hit_radius * 0.85 + hz.radius:
-			if has_shield:
-				has_shield = false
-				cat.set_shield(false)
-				hud.set_shield(false)
+			if shield_count > 0:
+				shield_count -= 1
+				hud.set_shield_count(shield_count)
+				if shield_count == 0:
+					cat.set_shield(false)
 				_burst(cat.position, "sparkle", Color(0.7, 0.9, 1.0), 16, 180, 0.6)
 				hazards.erase(hz)
 				hz.queue_free()
