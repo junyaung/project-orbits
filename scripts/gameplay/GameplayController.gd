@@ -78,6 +78,7 @@ const PLANET_COLORS := {
 }
 
 const UpperSkyBiomeScript := preload("res://scripts/gameplay/UpperSkyBiome.gd")
+const DreamSkyBiomeScript := preload("res://scripts/gameplay/DreamSkyBiome.gd")
 
 ## Test toggle: use the looping Tachyon Drift video as the backdrop instead of
 ## the painted gradient sky. The video is verified working; back on the painted
@@ -98,6 +99,7 @@ var clouds: Node2D
 var traj: Line2D
 var traj_arrow: Polygon2D
 var upper_sky: Node2D
+var dream_sky: Node2D
 
 var planets: Array[Planet] = []
 var pickups: Array[Pickup] = []
@@ -143,6 +145,12 @@ func _ready() -> void:
 		upper_sky = UpperSkyBiomeScript.new()
 		world.add_child(upper_sky)
 		upper_sky.call("setup", CAT_START.y)
+
+		# Dream Sky picks up exactly where Upper Sky's painted content ends,
+		# so the two backgrounds abut with no gap or seam.
+		dream_sky = DreamSkyBiomeScript.new()
+		world.add_child(dream_sky)
+		dream_sky.call("setup", upper_sky.call("get_top_world_y"))
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START

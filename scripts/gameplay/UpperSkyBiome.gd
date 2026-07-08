@@ -34,6 +34,7 @@ var _mist:      CPUParticles2D
 var _t:             float = 0.0
 var _wind_visible:  bool  = false
 var _wind_target_y: float = 0.0
+var _top_world_y:   float = 0.0   # world Y of the topmost painted row (see _build_base)
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,14 @@ func set_wind_lane(show: bool, world_y: float = 0.0) -> void:
 	_wind_visible = show
 	if show:
 		_wind_target_y = world_y
+
+
+## World Y of the topmost painted row of this biome's background - the point
+## where climbing further reveals nothing (currently: the plain gradient
+## fallback). The next biome (Dream Sky) anchors its own bottom edge here so
+## the two backgrounds abut with no gap.
+func get_top_world_y() -> float:
+	return _top_world_y
 
 
 # ─────────────────────────── builders ────────────────────────────────────────
@@ -86,6 +95,7 @@ func _build_base(biome_base_y: float) -> void:
 			_base = sp
 		r += float(tex.get_height())
 		i += 1
+	_top_world_y = top_world
 
 
 func _load_core_h() -> float:
