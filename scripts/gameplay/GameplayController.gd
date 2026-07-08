@@ -12,15 +12,29 @@ const HEAT_COOL := 0.14
 const CAT_START := Vector2(540, 2050)
 const CAM_LEAD := 400.0   # how far ahead (up) the camera sits; keeps the cat low so you see what's coming
 const FIRST_PLANET_Y := 1250.0
-# Planet-to-planet vertical spacing (center to center). A planet is ~216 wide,
-# so the minimum leaves room for ~2 planets between them; the maximum is a full
-# screen height, so the next planet is at most one screen away.
-const MIN_PLANET_GAP := 640.0
-const MAX_PLANET_GAP := 1920.0
-## Learning phase: for the first TUTORIAL_DIST meters difficulty ramps up from
-## easy (close planets, no hazards, gentle heat) to full. Gives new players room
-## to learn hold/orbit/release before the game gets demanding.
-const TUTORIAL_DIST := 1000.0
+
+## Upper Sky difficulty zones (matches the biome's ~1500 m painted length).
+## Each array is a value at the matching ZONE_BREAKS distance (meters);
+## _zone_value() linearly interpolates between consecutive breakpoints, so
+## difficulty ramps smoothly rather than jumping at the boundaries. Beyond
+## the last breakpoint (past the biome, not yet built) values hold at the
+## final entry.
+##
+##   0-300m    tutorial       — no hazards at all, planets close together
+##   300-600m  get used to it — hazards ease in, spacing widens
+##   600-900m  play zone      — normal difficulty
+##   900-1200m floating asteroids — hazard density peaks, shields introduced
+##   1200-1500m flying meteors — meteors mixed into hazards
+##
+## No "overheat" planet kind is ever spawned here (see _spawn_next's kinds
+## list) - that gimmick is reserved for a later biome, not this friendly one.
+const ZONE_BREAKS:         Array[float] = [0.0,   300.0, 600.0, 900.0,  1200.0, 1500.0]
+const ZONE_GAP_MIN:        Array[float] = [480.0, 560.0, 640.0, 640.0,  640.0,  640.0]
+const ZONE_GAP_MAX:        Array[float] = [620.0, 760.0, 900.0, 1100.0, 1500.0, 1920.0]
+const ZONE_HAZARD_CHANCE:  Array[float] = [0.0,   0.0,   0.30,  0.45,   0.55,   0.55]
+const ZONE_METEOR_FRAC:    Array[float] = [0.0,   0.0,   0.0,   0.0,    0.0,    0.45]
+const ZONE_SHIELD_CHANCE:  Array[float] = [0.0,   0.0,   0.0,   0.0,    0.22,   0.20]
+const ZONE_HEAT_MULT:      Array[float] = [0.40,  0.55,  0.70,  0.85,   1.0,    1.0]
 
 const CAT_SCENE := preload("res://scenes/actors/CatVehicle.tscn")
 const PLANET_SCENES := {
@@ -205,6 +219,18 @@ func _ellipse(rx: float, ry: float, seg: int) -> PackedVector2Array:
 		pts.append(Vector2(cos(a) * rx, sin(a) * ry))
 	return pts
 
+## Linear interpolation across ZONE_BREAKS: find which pair of breakpoints
+## dist_m falls between and blend the matching pair in `values`. Clamps to
+## the first/last entry outside the table's range.
+func _zone_value(dist_m: float, values: Array[float]) -> float:
+	if dist_m <= ZONE_BREAKS[0]:
+		return values[0]
+	for i in range(1, ZONE_BREAKS.size()):
+		if dist_m <= ZONE_BREAKS[i]:
+			var t: float = (dist_m - ZONE_BREAKS[i - 1]) / (ZONE_BREAKS[i] - ZONE_BREAKS[i - 1])
+			return lerpf(values[i - 1], values[i], t)
+	return values[values.size() - 1]
+
 # ------------------------------------------------------------- spawning ----
 func _seed_world() -> void:
 	# first planet directly ahead, with a runway below so the player has time
@@ -224,11 +250,13 @@ func _add_planet(kind: String, pos: Vector2, orbit_r: float) -> Planet:
 	return p
 
 func _spawn_next() -> void:
-	# 0 at the start of the run, 1 once we pass the tutorial distance
-	var ramp: float = clampf((start_y - top_spawn_y) * 0.1 / TUTORIAL_DIST, 0.0, 1.0)
-	# planets start close together (easy slings), widening to the full range later
-	var gap_max: float = lerpf(860.0, MAX_PLANET_GAP, ramp)
-	var y := top_spawn_y - randf_range(MIN_PLANET_GAP, gap_max)
+	# distance (in meters) of the LAST placed planet - the new one lands
+	# further still, so zone lookups use this as "where we are now"
+	var dist_here: float = (start_y - top_spawn_y) * 0.1
+
+	var gap_min: float = _zone_value(dist_here, ZONE_GAP_MIN)
+	var gap_max: float = _zone_value(dist_here, ZONE_GAP_MAX)
+	var y := top_spawn_y - randf_range(gap_min, gap_max)
 	# coin-flip direction (not a deterministic zigzag) - only bias back toward
 	# center once a planet drifts close to a screen edge
 	var dir: float = 1.0 if randf() < 0.5 else -1.0
@@ -237,6 +265,8 @@ func _spawn_next() -> void:
 	elif last_planet_x > 860.0:
 		dir = -1.0
 	var x: float = clamp(last_planet_x + dir * randf_range(90.0, 380.0), 140.0, 940.0)
+	# "overheat" is deliberately never in this pool - that gimmick belongs to
+	# a later, less beginner-friendly biome
 	var kinds := ["meadow", "cloud", "ruin", "dune", "cloud", "meadow"]
 	var kind: String = kinds[randi() % kinds.size()]
 	var orbit_r := randf_range(155.0, 205.0)
@@ -255,14 +285,13 @@ func _spawn_next() -> void:
 		mid += Vector2(randf_range(-70, 70), randf_range(-40, 40))
 		_add_pickup("star", _clear_of_planets(mid))
 
-	# hazards ramp in over the tutorial: none at the very start, up to full
-	# density by TUTORIAL_DIST. Only gentle rocks during the tutorial - meteors
-	# (fast) hold off until the player has the basics.
-	var haz_chance: float = lerpf(0.0, 0.55, ramp)
+	# hazard density and composition follow the zone table: none in the
+	# 0-300m tutorial, easing in through 300-900m, peaking as "floating
+	# asteroids" at 900-1200m, then meteors mix in for 1200-1500m
+	var haz_chance: float = _zone_value(dist_here, ZONE_HAZARD_CHANCE)
 	if randf() < haz_chance:
-		var hk: String = "rock"
-		if ramp >= 1.0 and randf() >= 0.6:
-			hk = "meteor"
+		var meteor_frac: float = _zone_value(dist_here, ZONE_METEOR_FRAC)
+		var hk: String = "meteor" if randf() < meteor_frac else "rock"
 		var ang := randf_range(0.0, TAU)
 		# spawn well OUTSIDE the ring - the min gap must exceed cat+rock radius,
 		# or a hazard sitting on the orbit path is an unavoidable hit
@@ -272,14 +301,14 @@ func _spawn_next() -> void:
 		hp.x = clamp(hp.x, 80.0, 1000.0)
 		_add_hazard(hk, hp)
 
-	# rare shield pickup
-	if randf() < 0.16:
+	# shields are introduced at 900m (floating asteroid zone) - none before
+	var shield_chance: float = _zone_value(dist_here, ZONE_SHIELD_CHANCE)
+	if randf() < shield_chance:
 		var sp := Vector2(clamp(x + randf_range(-120, 120), 120, 960), y - randf_range(60, 140))
 		_add_pickup("shield", _clear_of_planets(sp))
 
 	# wind-lane cue: show between planet pairs in the 100-200 m learning phase
 	if upper_sky != null:
-		var dist_here: float = (start_y - y) * 0.1
 		if dist_here > 80.0 and dist_here < 220.0 and randf() < 0.40:
 			upper_sky.call("set_wind_lane", true, (y + prev_y) * 0.5)
 		elif dist_here >= 220.0:
@@ -509,8 +538,8 @@ func _orbit(p: Planet, delta: float) -> void:
 	var tangent := Vector2.from_angle(orbit_angle + orbit_dir * PI * 0.5)
 	velocity = tangent * LAUNCH_SPEED
 
-	# gentler heat build during the tutorial so lingering to learn is forgiving
-	var heat_mult: float = lerpf(0.5, 1.0, clampf(distance / TUTORIAL_DIST, 0.0, 1.0))
+	# gentler heat build in the early zones so lingering to learn is forgiving
+	var heat_mult: float = _zone_value(distance, ZONE_HEAT_MULT)
 	heat = min(1.0, heat + HEAT_GAIN * heat_mult * delta)
 	p.set_heat_ratio(heat)
 	cat.play_orbit_tilt(orbit_dir)
