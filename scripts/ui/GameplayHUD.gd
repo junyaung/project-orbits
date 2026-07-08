@@ -6,7 +6,6 @@ class_name GameplayHUD
 
 signal retry_pressed
 signal pause_pressed
-signal start_pressed
 signal home_pressed
 
 const INK := Color(0.30, 0.36, 0.46)
@@ -27,8 +26,6 @@ var result_line: Label
 var result_distance: Label
 var result_sub: Label
 var result_best: Panel
-var start_overlay: Control
-var start_best: Label
 var indicator: Node2D
 var _ind_dot: Polygon2D
 var _ind_t := 0.0
@@ -169,14 +166,14 @@ func _build() -> void:
 	tutorial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tutorial.size = Vector2(W, 60)
 	tutorial.position = Vector2(0, _screen.y - 220)
-	tutorial.visible = false   # shown once the run begins; the hint is on the start card first
+	tutorial.visible = false
 	add_child(tutorial)
 
 	# --- result card (hidden) ---
 	_build_result_card()
 
-	# --- start overlay (visible until the player begins) ---
-	_build_start_overlay()
+	# Launch begins the run immediately - no in-scene Start overlay.
+	tutorial.visible = true
 
 	# --- off-screen next-planet indicator ---
 	_build_indicator()
@@ -300,77 +297,6 @@ func _build_result_card() -> void:
 
 	_reveal_group = [result_cat, title, result_line, result_distance, result_sub, retry, home]
 
-func _build_start_overlay() -> void:
-	# Calm invitation, not a slam. A light scrim keeps the idling world visible
-	# behind it, the title carries the game's one strong image, and the control
-	# is stated plainly - the player leaves the screen already knowing what to do.
-	var W := _screen.x
-	start_overlay = Control.new()
-	start_overlay.size = _screen
-	start_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(start_overlay)
-
-	var scrim := ColorRect.new()
-	scrim.color = Color(0.88, 0.92, 0.96, 0.45)
-	scrim.size = _screen
-	start_overlay.add_child(scrim)
-
-	var title := Label.new()
-	title.text = "ORBITS"
-	title.add_theme_font_size_override("font_size", 128)
-	title.add_theme_color_override("font_color", INK)
-	title.add_theme_color_override("font_outline_color", Color(0.99, 0.98, 0.94, 0.9))
-	title.add_theme_constant_override("outline_size", 16)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.size = Vector2(W, 150)
-	title.position = Vector2(0, 430)
-	start_overlay.add_child(title)
-
-	var tagline := Label.new()
-	tagline.text = "a cat, a manhole cover, and the whole sky"
-	tagline.add_theme_font_size_override("font_size", 36)
-	tagline.add_theme_color_override("font_color", Color(0.42, 0.48, 0.58))
-	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tagline.size = Vector2(W, 50)
-	tagline.position = Vector2(0, 600)
-	start_overlay.add_child(tagline)
-
-	var hint := Label.new()
-	hint.text = "Hold to orbit   ·   Release to launch"
-	hint.add_theme_font_size_override("font_size", 38)
-	hint.add_theme_color_override("font_color", INK)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.size = Vector2(W, 50)
-	hint.position = Vector2(0, 720)
-	start_overlay.add_child(hint)
-
-	var start_btn := Button.new()
-	start_btn.text = "Start"
-	start_btn.add_theme_font_size_override("font_size", 58)
-	start_btn.add_theme_color_override("font_color", Color(0.3, 0.4, 0.55))
-	start_btn.size = Vector2(460, 150)
-	start_btn.position = Vector2((W - 460) * 0.5, 860)
-	start_btn.add_theme_stylebox_override("normal", _capsule_style(Color(1, 1, 1)))
-	start_btn.add_theme_stylebox_override("hover", _capsule_style(Color(1, 0.99, 0.94)))
-	start_btn.add_theme_stylebox_override("pressed", _capsule_style(Color(0.88, 0.84, 0.76)))
-	start_btn.pressed.connect(func(): start_pressed.emit())
-	start_overlay.add_child(start_btn)
-
-	start_best = Label.new()
-	start_best.add_theme_font_size_override("font_size", 34)
-	start_best.add_theme_color_override("font_color", Color(0.55, 0.6, 0.68))
-	start_best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	start_best.size = Vector2(W, 44)
-	start_best.position = Vector2(0, 1030)
-	start_best.visible = false
-	start_overlay.add_child(start_best)
-
-	# gentle breathing on the title so the screen feels alive while waiting
-	var tw := create_tween().set_loops()
-	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_property(title, "position:y", 424.0, 1.8)
-	tw.tween_property(title, "position:y", 430.0, 1.8)
-
 func _poly_circle(r: float, seg: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in seg:
@@ -487,21 +413,6 @@ func set_shield_count(n: int) -> void:
 		tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tw.tween_property(shield_hud, "scale", Vector2(1.15, 1.15), 0.10)
 		tw.tween_property(shield_hud, "scale", Vector2.ONE, 0.14)
-
-func set_start_best(best: int) -> void:
-	if best > 0 and start_best:
-		start_best.text = "best   %d m" % best
-		start_best.visible = true
-
-func begin_run() -> void:
-	tutorial.visible = true
-	var tw := create_tween()
-	tw.tween_property(start_overlay, "modulate:a", 0.0, 0.25)
-	tw.tween_callback(start_overlay.queue_free)
-
-func hide_start_now() -> void:
-	if start_overlay:
-		start_overlay.queue_free()
 
 func set_distance(v: float) -> void:
 	distance_label.text = str(int(v)) + "m"

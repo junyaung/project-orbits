@@ -130,20 +130,12 @@ func _ready() -> void:
 	hud.retry_pressed.connect(func(): get_tree().reload_current_scene())
 	hud.home_pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/ui/Main.tscn"))
 	hud.pause_pressed.connect(_toggle_pause)
-	hud.start_pressed.connect(_begin)
 	add_child(hud)
 
 	_seed_world()
 
-	if autoplay:
-		started = true
-		hud.hide_start_now()
-	else:
-		hud.set_start_best(best)
-
-func _begin() -> void:
+	# Launch begins the run immediately - no separate in-scene Start tap.
 	started = true
-	hud.begin_run()
 
 func _build_sky() -> void:
 	var layer := CanvasLayer.new()
