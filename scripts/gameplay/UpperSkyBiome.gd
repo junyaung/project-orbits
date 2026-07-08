@@ -71,11 +71,14 @@ func setup(biome_base_y: float) -> void:
 	var tr_scale: float = SCREEN_W / float(TRANS_TEX.get_width())
 	_tr_h = float(TRANS_TEX.get_height()) * tr_scale
 	_build_base()
-	_build_overlay()
-	_build_transition()
-	_build_decor()
+	# NOTE: overlay, decor, transition, and sling_trail assets have baked-in
+	# checker backgrounds that cannot be reliably keyed (cream art ≈ checker).
+	# They need re-export with real alpha transparency before being enabled here.
+	# _build_overlay()
+	# _build_transition()
+	# _build_decor()
 	_build_particles()
-	_build_gimmicks()
+	_build_gimmicks()   # wind_lane is clean (8% checker); sling_trail disabled below
 
 
 ## Call from GameplayController._process() each frame.
@@ -84,11 +87,15 @@ func update_state(delta: float, distance_m: float, cam_y: float,
 		is_orbiting: bool, orbit_ideal_frac: float) -> void:
 	_t += delta
 	var progress: float = clampf(distance_m / BIOME_END, 0.0, 1.0)
-	_animate_overlay(delta, progress, cam_y)
-	_animate_transition(delta, progress, cam_y)
-	_animate_decor(delta)
+	if _overlay != null:
+		_animate_overlay(delta, progress, cam_y)
+	if _transition != null:
+		_animate_transition(delta, progress, cam_y)
+	if _decor_nodes.size() > 0:
+		_animate_decor(delta)
 	_update_particles(cam_y)
-	_animate_sling_trail(delta, is_orbiting, orbit_ideal_frac, cam_y)
+	if _sling_trail != null:
+		_animate_sling_trail(delta, is_orbiting, orbit_ideal_frac, cam_y)
 	_animate_wind_lane(delta, cam_y)
 
 
@@ -232,15 +239,7 @@ func _build_gimmicks() -> void:
 	_wind_lane.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	_wind_lane.z_index = -80
 	add_child(_wind_lane)
-
-	_sling_trail = Sprite2D.new()
-	_sling_trail.texture = TRAIL_TEX
-	_sling_trail.centered = true
-	var ss: float = SCREEN_W / float(TRAIL_TEX.get_width())
-	_sling_trail.scale = Vector2(ss, ss)
-	_sling_trail.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	_sling_trail.z_index = -80
-	add_child(_sling_trail)
+	# sling_trail disabled — asset has baked checker background (needs re-export)
 
 
 # ─────────────────────────── animation helpers ───────────────────────────────
