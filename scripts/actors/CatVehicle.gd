@@ -17,6 +17,7 @@ var _state := "idle"
 var _time := 0.0
 var _target_tilt := 0.0
 var _shield_on := false
+var _scale_tween: Tween   # single owner of sprite.scale, so reactions don't fight
 
 func _ready() -> void:
 	tex = {
@@ -70,7 +71,7 @@ func set_shield(on: bool) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	# gentle idle bob
+	# gentle idle bob (a small vertical offset only - never touches scale)
 	var bob := sin(_time * 2.4) * 3.0
 	sprite.position.y = bob
 	# smooth tilt toward target (orbit lean)
@@ -78,6 +79,16 @@ func _process(delta: float) -> void:
 	# shield shimmer: gentle alpha pulse while active
 	if _shield_on:
 		shield_aura.modulate.a = 0.75 + 0.25 * sin(_time * 3.0)
+
+## Start a fresh scale reaction, cancelling any in-flight one. Without this,
+## a star pop landing mid-launch (or two stars in one frame) leaves several
+## tweens driving sprite.scale at once, so the cat visibly swells/jitters.
+func _begin_scale_anim() -> Tween:
+	if _scale_tween != null and _scale_tween.is_valid():
+		_scale_tween.kill()
+	sprite.scale = _base_scale
+	_scale_tween = create_tween()
+	return _scale_tween
 
 func set_state(s: String) -> void:
 	if _state == s:
@@ -98,7 +109,7 @@ func play_launch(launch_dir: Vector2) -> void:
 	set_state("launch")
 	_target_tilt = launch_dir.angle() + PI * 0.5
 	# squash & stretch reaction, relative to the authored base scale
-	var tw := create_tween()
+	var tw := _begin_scale_anim()
 	tw.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(sprite, "scale", _base_scale * Vector2(1.14, 0.88), 0.06)
 	tw.tween_property(sprite, "scale", _base_scale, 0.16)
@@ -107,7 +118,7 @@ func play_happy() -> void:
 	set_state("happy")
 
 func pop() -> void:
-	var tw := create_tween()
+	var tw := _begin_scale_anim()
 	tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(sprite, "scale", _base_scale * 1.12, 0.08)
 	tw.tween_property(sprite, "scale", _base_scale, 0.12)

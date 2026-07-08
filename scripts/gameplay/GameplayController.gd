@@ -404,10 +404,14 @@ func _physics_process(delta: float) -> void:
 	_despawn_behind()
 	_update_trajectory()
 
-func _process(delta: float) -> void:
-	# camera follow (cat sits in the lower third, space ahead)
+	# Camera follows in the SAME fixed step the cat moves in. Doing this in
+	# _process instead made the camera lerp toward a stale cat position between
+	# physics ticks and then snap when the cat advanced - the visible flight
+	# jitter. Lockstep here keeps their relative offset stable and smooth.
 	var target := Vector2(540, cat.position.y - CAM_LEAD)
 	camera.position = camera.position.lerp(target, 0.12)
+
+func _process(delta: float) -> void:
 	# drift clouds (only exist when the painted sky is used, not the video bg)
 	if clouds:
 		for c in clouds.get_children():
