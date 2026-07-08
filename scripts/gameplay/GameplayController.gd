@@ -35,6 +35,22 @@ const ZONE_HAZARD_CHANCE:  Array[float] = [0.0,   0.0,   0.30,  0.45,   0.55,   
 const ZONE_METEOR_FRAC:    Array[float] = [0.0,   0.0,   0.0,   0.0,    0.0,    0.45]
 const ZONE_SHIELD_CHANCE:  Array[float] = [0.0,   0.0,   0.0,   0.0,    0.22,   0.20]
 const ZONE_HEAT_MULT:      Array[float] = [0.40,  0.55,  0.70,  0.85,   1.0,    1.0]
+## Chance a "row" spawns two side-by-side planets instead of one, giving the
+## player a real choice of where to sling next rather than a single forced
+## path. Upper Sky is the generous, friendly biome, so this stays the
+## majority case throughout - only tapering slightly as hazards ramp up.
+const ZONE_BRANCH_CHANCE:  Array[float] = [0.90,  0.85,  0.75,  0.65,   0.60,   0.60]
+
+## Orbit-radius range used for BOTH planets in a branching row. Slightly
+## smaller than the single-row 155-205 range so a row of two comfortably
+## fits the ~800px playable width. Note gravity radii ARE allowed to overlap
+## here (see _physics_process's capture-lock comment) - once orbiting one,
+## the player stays locked onto it regardless of the other branch's pull, so
+## only visual ring overlap needs avoiding, not gravity-radius separation.
+const BRANCH_ORBIT_R_MIN := 150.0
+const BRANCH_ORBIT_R_MAX := 180.0
+const BRANCH_HALF_SPREAD_MIN := 200.0
+const BRANCH_HALF_SPREAD_MAX := 260.0
 
 const CAT_SCENE := preload("res://scenes/actors/CatVehicle.tscn")
 const PLANET_SCENES := {
@@ -249,8 +265,19 @@ func _add_planet(kind: String, pos: Vector2, orbit_r: float) -> Planet:
 	planets.append(p)
 	return p
 
+## "overheat" is deliberately never in this pool - that gimmick belongs to a
+## later, less beginner-friendly biome
+const PLANET_KINDS := ["meadow", "cloud", "ruin", "dune", "cloud", "meadow"]
+
+func _random_kind() -> String:
+	return PLANET_KINDS[randi() % PLANET_KINDS.size()]
+
+## Places the next row of planets ahead. Most rows in Upper Sky branch into
+## TWO planets side by side rather than one, so whichever moment the player
+## releases at, both a left and a right target are reachable - no single
+## forced path, which keeps the biome feeling generous rather than a rail.
 func _spawn_next() -> void:
-	# distance (in meters) of the LAST placed planet - the new one lands
+	# distance (in meters) of the LAST placed row - the new one lands
 	# further still, so zone lookups use this as "where we are now"
 	var dist_here: float = (start_y - top_spawn_y) * 0.1
 
@@ -258,56 +285,24 @@ func _spawn_next() -> void:
 	var gap_max: float = _zone_value(dist_here, ZONE_GAP_MAX)
 	var y := top_spawn_y - randf_range(gap_min, gap_max)
 	# coin-flip direction (not a deterministic zigzag) - only bias back toward
-	# center once a planet drifts close to a screen edge
+	# center once the chain drifts close to a screen edge
 	var dir: float = 1.0 if randf() < 0.5 else -1.0
 	if last_planet_x < 220.0:
 		dir = 1.0
 	elif last_planet_x > 860.0:
 		dir = -1.0
-	var x: float = clamp(last_planet_x + dir * randf_range(90.0, 380.0), 140.0, 940.0)
-	# "overheat" is deliberately never in this pool - that gimmick belongs to
-	# a later, less beginner-friendly biome
-	var kinds := ["meadow", "cloud", "ruin", "dune", "cloud", "meadow"]
-	var kind: String = kinds[randi() % kinds.size()]
-	var orbit_r := randf_range(155.0, 205.0)
 
 	var prev_x := last_planet_x
 	var prev_y := top_spawn_y
-	_add_planet(kind, Vector2(x, y), orbit_r)
-	top_spawn_y = y
-	last_planet_x = x
 
-	# stars along the arc between the two planets, nudged clear of any planet
-	var star_n := 1 + randi() % 2
-	for i in star_n:
-		var t := (float(i) + 1.0) / (float(star_n) + 1.0)
-		var mid := Vector2(lerp(prev_x, x, t), lerp(prev_y, y, t))
-		mid += Vector2(randf_range(-70, 70), randf_range(-40, 40))
-		_add_pickup("star", _clear_of_planets(mid))
+	var branch_chance: float = _zone_value(dist_here, ZONE_BRANCH_CHANCE)
+	var did_branch := false
+	if randf() < branch_chance:
+		did_branch = _spawn_branch_row(dist_here, prev_x, prev_y, dir, y)
+	if not did_branch:
+		_spawn_single_row(dist_here, prev_x, prev_y, dir, y)
 
-	# hazard density and composition follow the zone table: none in the
-	# 0-300m tutorial, easing in through 300-900m, peaking as "floating
-	# asteroids" at 900-1200m, then meteors mix in for 1200-1500m
-	var haz_chance: float = _zone_value(dist_here, ZONE_HAZARD_CHANCE)
-	if randf() < haz_chance:
-		var meteor_frac: float = _zone_value(dist_here, ZONE_METEOR_FRAC)
-		var hk: String = "meteor" if randf() < meteor_frac else "rock"
-		var ang := randf_range(0.0, TAU)
-		# spawn well OUTSIDE the ring - the min gap must exceed cat+rock radius,
-		# or a hazard sitting on the orbit path is an unavoidable hit
-		var clear_dist := orbit_r + randf_range(180.0, 340.0)
-		var hp := Vector2(x, y) + Vector2.from_angle(ang) * clear_dist
-		hp = _clear_of_orbit_rings(hp)   # also keep clear of every OTHER planet's ring
-		hp.x = clamp(hp.x, 80.0, 1000.0)
-		_add_hazard(hk, hp)
-
-	# shields are introduced at 900m (floating asteroid zone) - none before
-	var shield_chance: float = _zone_value(dist_here, ZONE_SHIELD_CHANCE)
-	if randf() < shield_chance:
-		var sp := Vector2(clamp(x + randf_range(-120, 120), 120, 960), y - randf_range(60, 140))
-		_add_pickup("shield", _clear_of_planets(sp))
-
-	# wind-lane cue: show between planet pairs in the 100-200 m learning phase
+	# wind-lane cue: show between rows in the 100-200 m learning phase
 	if upper_sky != null:
 		if dist_here > 80.0 and dist_here < 220.0 and randf() < 0.40:
 			upper_sky.call("set_wind_lane", true, (y + prev_y) * 0.5)
@@ -316,6 +311,121 @@ func _spawn_next() -> void:
 
 	# a later planet's ring may now overlap an earlier hazard - fix or drop those
 	_reconcile_hazards()
+
+## The original single-target row: one planet, offset from the previous one
+## by dir * a random distance. Falls back here when the branch roll misses,
+## or when _spawn_branch_row() can't fit two planets without edge-clamping
+## them too close together.
+func _spawn_single_row(dist_here: float, prev_x: float, prev_y: float, dir: float, y: float) -> void:
+	var x: float = clamp(prev_x + dir * randf_range(90.0, 380.0), 140.0, 940.0)
+	var orbit_r := randf_range(155.0, 205.0)
+	_add_planet(_random_kind(), Vector2(x, y), orbit_r)
+	top_spawn_y = y
+	last_planet_x = x
+
+	_add_stars_along(prev_x, prev_y, x, y)
+	_maybe_add_hazard(dist_here, x, y, orbit_r)
+	_maybe_add_shield(dist_here, x, y)
+
+## Two planets side by side at (roughly) the same height - a real fork where
+## either one is a valid next target, chosen purely by when the player
+## releases while orbiting the previous planet. Their gravity radii CAN
+## overlap (that's fine - _physics_process locks onto whichever one you're
+## already orbiting, so proximity to the other never steals the hold); the
+## spacing here only needs to keep the dotted orbit RINGS from visually
+## overlapping. If a hazard rolls for this row, it's placed on only ONE
+## side, so picking the other branch is always a way to dodge it entirely -
+## the "generous" half of branching. Returns false (caller should fall back
+## to a single planet) if the chain has drifted so close to an edge that
+## both branches can't fit on-screen.
+func _spawn_branch_row(dist_here: float, prev_x: float, prev_y: float, dir: float, y: float) -> bool:
+	var orbit_l := randf_range(BRANCH_ORBIT_R_MIN, BRANCH_ORBIT_R_MAX)
+	var orbit_r := randf_range(BRANCH_ORBIT_R_MIN, BRANCH_ORBIT_R_MAX)
+	# ring radius == orbit_radius (Planet draws its dotted ring at that
+	# distance) - require enough separation that the two rings don't touch
+	var required_sep: float = orbit_l + orbit_r + 40.0
+	var needed_half: float = required_sep * 0.5
+	var half_spread: float = randf_range(maxf(needed_half, BRANCH_HALF_SPREAD_MIN), maxf(needed_half, BRANCH_HALF_SPREAD_MAX))
+
+	# Center is clamped to a band narrow enough that, combined with
+	# BRANCH_HALF_SPREAD_MAX, both branches ALWAYS fit inside [140, 940]
+	# without needing to clamp x_l/x_r themselves - so this basically never
+	# fails in practice (the x_r-x_l check below is just a safety net).
+	var center: float = clamp(prev_x + dir * randf_range(60.0, 140.0), 140.0 + BRANCH_HALF_SPREAD_MAX, 940.0 - BRANCH_HALF_SPREAD_MAX)
+	var x_l: float = clamp(center - half_spread, 140.0, 940.0)
+	var x_r: float = clamp(center + half_spread, 140.0, 940.0)
+	if x_r - x_l < required_sep:
+		return false   # edge-clamped too close together - not worth the risk
+
+	var y_l := y + randf_range(-40.0, 40.0)
+	var y_r := y + randf_range(-40.0, 40.0)
+
+	_add_planet(_random_kind(), Vector2(x_l, y_l), orbit_l)
+	_add_planet(_random_kind(), Vector2(x_r, y_r), orbit_r)
+	top_spawn_y = minf(y_l, y_r)
+	last_planet_x = center
+
+	_add_stars_along(prev_x, prev_y, x_l, y_l)
+	_add_stars_along(prev_x, prev_y, x_r, y_r)
+
+	# one hazard roll for the whole row, dropped onto only one branch - the
+	# other branch is always a clean way to dodge it entirely
+	var haz_chance: float = _zone_value(dist_here, ZONE_HAZARD_CHANCE)
+	var hazard_on_left := randf() < 0.5
+	var placed := false
+	if randf() < haz_chance:
+		if hazard_on_left:
+			placed = _add_hazard_near(dist_here, x_l, y_l, orbit_l)
+		else:
+			placed = _add_hazard_near(dist_here, x_r, y_r, orbit_r)
+
+	# if a hazard landed, put any shield on the OTHER branch (clear incentive);
+	# otherwise just pick a side at random
+	var shield_on_left: bool = (not hazard_on_left) if placed else (randf() < 0.5)
+	if shield_on_left:
+		_maybe_add_shield(dist_here, x_l, y_l)
+	else:
+		_maybe_add_shield(dist_here, x_r, y_r)
+	return true
+
+func _add_stars_along(prev_x: float, prev_y: float, x: float, y: float) -> void:
+	var star_n := 1 + randi() % 2
+	for i in star_n:
+		var t := (float(i) + 1.0) / (float(star_n) + 1.0)
+		var mid := Vector2(lerp(prev_x, x, t), lerp(prev_y, y, t))
+		mid += Vector2(randf_range(-70, 70), randf_range(-40, 40))
+		_add_pickup("star", _clear_of_planets(mid))
+
+## Hazard density and composition follow the zone table: none in the 0-300m
+## tutorial, easing in through 300-900m, peaking as "floating asteroids" at
+## 900-1200m, then meteors mix in for 1200-1500m. Returns true if placed.
+func _maybe_add_hazard(dist_here: float, x: float, y: float, orbit_r: float) -> bool:
+	var haz_chance: float = _zone_value(dist_here, ZONE_HAZARD_CHANCE)
+	if randf() < haz_chance:
+		return _add_hazard_near(dist_here, x, y, orbit_r)
+	return false
+
+func _add_hazard_near(dist_here: float, x: float, y: float, orbit_r: float) -> bool:
+	var meteor_frac: float = _zone_value(dist_here, ZONE_METEOR_FRAC)
+	var hk: String = "meteor" if randf() < meteor_frac else "rock"
+	var ang := randf_range(0.0, TAU)
+	# spawn well OUTSIDE the ring - the min gap must exceed cat+rock radius,
+	# or a hazard sitting on the orbit path is an unavoidable hit
+	var clear_dist := orbit_r + randf_range(180.0, 340.0)
+	var hp := Vector2(x, y) + Vector2.from_angle(ang) * clear_dist
+	hp = _clear_of_orbit_rings(hp)   # also keep clear of every OTHER planet's ring
+	hp.x = clamp(hp.x, 80.0, 1000.0)
+	_add_hazard(hk, hp)
+	return true
+
+## Shields are introduced at 900m (floating asteroid zone) - none before.
+func _maybe_add_shield(dist_here: float, x: float, y: float) -> bool:
+	var shield_chance: float = _zone_value(dist_here, ZONE_SHIELD_CHANCE)
+	if randf() < shield_chance:
+		var sp := Vector2(clamp(x + randf_range(-120, 120), 120, 960), y - randf_range(60, 140))
+		_add_pickup("shield", _clear_of_planets(sp))
+		return true
+	return false
 
 ## Keep a hazard away from EVERY planet's dotted orbit ring. A hazard within a
 ## band around the ring (where the orbiting cat travels) would be a guaranteed
@@ -406,7 +516,12 @@ func _physics_process(delta: float) -> void:
 	if not started or game_over or paused:
 		return
 
-	var candidate := _nearest_planet()
+	# While already orbiting, stay locked onto that SAME planet - only
+	# _release() (letting go) should ever change which planet you're headed
+	# to. Otherwise, if two planets' gravity radii ever came close together
+	# (e.g. a branching row's two side-by-side options), re-picking the
+	# nearest one every frame could silently swap current_planet mid-hold.
+	var candidate: Planet = current_planet if is_orbiting else _nearest_planet()
 	var holding := Input.is_action_pressed("orbit_hold")
 	if autoplay:  # gated self-test: orbit until warm, then fling onward
 		holding = candidate != null and heat < 0.6
