@@ -3,9 +3,10 @@ extends Node2D
 ## Layered visual system for the Upper Sky biome (0–300 m).
 ##
 ## Layers (z-order, back to front):
-##   -100  base      — stitched footer+A/B/C/D background (D = transition
-##                     visual, footer = mirrored A filling below the start
-##                     line), world-space
+##   -100  base      — randomized A/B/C + transition background covering the
+##                     whole ~1500 m biome, sliced into vertical tiles
+##                     (assets/backgrounds/upper_sky/tile_*.png) stacked in
+##                     world space; a mirrored footer fills below the start line
 ##    -85  particles — sky dust + cloud mist CPUParticles
 ##    -80  gimmick   — wind-lane cue
 ##
@@ -14,18 +15,14 @@ extends Node2D
 ## at the pixel level, so no keying approach can separate them reliably.
 
 # ── textures ──────────────────────────────────────────────────────────────────
-const BG_TEX:   Texture2D = preload("res://assets/backgrounds/upper_sky_base.png")
 const WIND_TEX: Texture2D = preload("res://assets/sprites/biomes/upper_sky/wind_lane.png")
+const TILE_DIR: String = "res://assets/backgrounds/upper_sky/"
 
 # ── geometry constants ────────────────────────────────────────────────────────
 const SCREEN_W:  float = 1080.0
 const SCREEN_H:  float = 1920.0
-const BIOME_END: float = 300.0   # biome ends at 300 m
-
-## Row (from BG_TEX's top) where the biome's start line sits — i.e. the
-## bottom edge of segment A, before the mirrored footer below it. Printed by
-## tools/prep_upper_sky.py each time upper_sky_base.png is regenerated.
-const CORE_H: float = 6840.0
+const BIOME_END: float = 1500.0   # biome covers ~1500 m
+const DEFAULT_CORE_H: float = 15015.0   # fallback if meta.json is missing
 
 # ── scene nodes ───────────────────────────────────────────────────────────────
 var _base:      Sprite2D
@@ -63,13 +60,42 @@ func set_wind_lane(show: bool, world_y: float = 0.0) -> void:
 
 # ─────────────────────────── builders ────────────────────────────────────────
 
+## Stack the background tiles in world space. meta.json's core_h is the row
+## (from the canvas top) of the biome start line, so canvas row 0 sits at
+## world_y = biome_base_y - core_h. Tiles are contiguous top→bottom, so each
+## one is placed at that origin plus its cumulative height from the top.
 func _build_base(biome_base_y: float) -> void:
-	_base = Sprite2D.new()
-	_base.texture = BG_TEX
-	_base.centered = false
-	_base.position = Vector2(0.0, biome_base_y - CORE_H)
-	_base.z_index = -100
-	add_child(_base)
+	var core_h: float = _load_core_h()
+	var top_world: float = biome_base_y - core_h
+	var r: float = 0.0
+	var i: int = 0
+	while true:
+		var path: String = "%stile_%d.png" % [TILE_DIR, i]
+		if not ResourceLoader.exists(path):
+			break
+		var tex: Texture2D = load(path)
+		if tex == null:
+			break
+		var sp := Sprite2D.new()
+		sp.texture = tex
+		sp.centered = false
+		sp.position = Vector2(0.0, top_world + r)
+		sp.z_index = -100
+		add_child(sp)
+		if i == 0:
+			_base = sp
+		r += float(tex.get_height())
+		i += 1
+
+
+func _load_core_h() -> float:
+	var f := FileAccess.open("%smeta.json" % TILE_DIR, FileAccess.READ)
+	if f == null:
+		return DEFAULT_CORE_H
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	if parsed is Dictionary and parsed.has("core_h"):
+		return float(parsed["core_h"])
+	return DEFAULT_CORE_H
 
 
 func _build_particles() -> void:
