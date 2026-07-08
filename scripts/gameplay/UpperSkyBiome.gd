@@ -23,6 +23,10 @@ const SCREEN_W:  float = 1080.0
 const SCREEN_H:  float = 1920.0
 const BIOME_END: float = 1500.0   # biome covers ~1500 m
 const DEFAULT_CORE_H: float = 15015.0   # fallback if meta.json is missing
+## Fade-out window, matching DreamSkyBiome and BiomeTransitionLayer so all
+## three layers blend in sync (dream fades in, upper fades out, veil peaks).
+const T_START: float = 1200.0
+const T_END:   float = 1600.0
 
 # ── scene nodes ───────────────────────────────────────────────────────────────
 var _base:      Sprite2D
@@ -45,9 +49,14 @@ func setup(biome_base_y: float) -> void:
 
 
 ## Call from GameplayController._process() each frame.
-func update_state(delta: float, _distance_m: float, cam_y: float,
+func update_state(delta: float, distance_m: float, cam_y: float,
 		_is_orbiting: bool, _orbit_ideal_frac: float) -> void:
 	_t += delta
+	# Fade out as Dream Sky fades in above; both biomes share the same window
+	var raw_t := inverse_lerp(T_START, T_END, distance_m)
+	var fade_t := clampf(raw_t, 0.0, 1.0)
+	fade_t = fade_t * fade_t * (3.0 - 2.0 * fade_t)
+	modulate.a = 1.0 - fade_t
 	_update_particles(cam_y)
 	_animate_wind_lane(delta, cam_y)
 

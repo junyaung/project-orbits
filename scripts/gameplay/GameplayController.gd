@@ -77,8 +77,9 @@ const PLANET_COLORS := {
 	"overheat": Color(0.95, 0.60, 0.50),
 }
 
-const UpperSkyBiomeScript := preload("res://scripts/gameplay/UpperSkyBiome.gd")
-const DreamSkyBiomeScript := preload("res://scripts/gameplay/DreamSkyBiome.gd")
+const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiome.gd")
+const DreamSkyBiomeScript         := preload("res://scripts/gameplay/DreamSkyBiome.gd")
+const BiomeTransitionLayerScript  := preload("res://scripts/gameplay/BiomeTransitionLayer.gd")
 
 ## Test toggle: use the looping Tachyon Drift video as the backdrop instead of
 ## the painted gradient sky. The video is verified working; back on the painted
@@ -100,6 +101,7 @@ var traj: Line2D
 var traj_arrow: Polygon2D
 var upper_sky: Node2D
 var dream_sky: Node2D
+var _transition_layer: Node2D
 
 var planets: Array[Planet] = []
 var pickups: Array[Pickup] = []
@@ -146,11 +148,14 @@ func _ready() -> void:
 		world.add_child(upper_sky)
 		upper_sky.call("setup", CAT_START.y)
 
-		# Dream Sky picks up exactly where Upper Sky's painted content ends,
-		# so the two backgrounds abut with no gap or seam.
+		# Dream Sky picks up exactly where Upper Sky's painted content ends.
 		dream_sky = DreamSkyBiomeScript.new()
 		world.add_child(dream_sky)
 		dream_sky.call("setup", upper_sky.call("get_top_world_y"))
+
+		# Full-screen veil + tint that bridge the seam (1200–1600 m window).
+		_transition_layer = BiomeTransitionLayerScript.new()
+		world.add_child(_transition_layer)
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START
@@ -574,6 +579,10 @@ func _process(delta: float) -> void:
 	_update_target_indicator()
 	if upper_sky != null:
 		upper_sky.call("update_state", delta, distance, camera.position.y, is_orbiting, 0.0)
+	if dream_sky != null:
+		dream_sky.call("update_state", delta, distance, camera.position.y)
+	if _transition_layer != null:
+		_transition_layer.call("update", delta, distance, camera.position.y)
 
 # ---- off-screen "next planet" indicator ----
 func _next_target() -> Planet:

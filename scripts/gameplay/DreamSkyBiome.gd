@@ -5,17 +5,24 @@ extends Node2D
 ## crossfade technique as Upper Sky until the user adds real A/B/C +
 ## transition variants (see tools/prep_dream_sky.py).
 ##
-## Unlike Upper Sky, this biome has no "footer" or cat-start anchor of its
-## own - it just abuts directly onto the top of whatever comes before it.
-## setup() takes that anchor Y (Upper Sky's get_top_world_y()) and stacks
-## tiles upward from there, so the two backgrounds meet with no seam/gap.
+## Starts invisible (modulate.a = 0). update_state() fades it in over the
+## 1200–1600m window, matching BiomeTransitionLayer and UpperSkyBiome so
+## the three layers blend simultaneously rather than cutting.
 
 const TILE_DIR: String = "res://assets/backgrounds/dream_sky/"
 
-var _base: Sprite2D
+const T_START := 1200.0
+const T_END   := 1600.0
+
+var _base:     Sprite2D
+var _stars:    CPUParticles2D
+var _stardust: CPUParticles2D
+
 
 func setup(anchor_bottom_y: float) -> void:
+	modulate.a = 0.0
 	_build_base(anchor_bottom_y)
+	_build_particles()
 
 
 func _build_base(anchor_bottom_y: float) -> void:
@@ -40,6 +47,57 @@ func _build_base(anchor_bottom_y: float) -> void:
 			_base = sp
 		r += float(tex.get_height())
 		i += 1
+
+
+func _build_particles() -> void:
+	# Fine star sparks — small, fast, cool white-lavender
+	_stars = CPUParticles2D.new()
+	_stars.emitting = true
+	_stars.amount = 20
+	_stars.lifetime = 5.0
+	_stars.one_shot = false
+	_stars.explosiveness = 0.0
+	_stars.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_stars.emission_rect_extents = Vector2(540.0, 960.0)
+	_stars.direction = Vector2(0.0, -1.0)
+	_stars.spread = 40.0
+	_stars.gravity = Vector2.ZERO
+	_stars.initial_velocity_min = 4.0
+	_stars.initial_velocity_max = 14.0
+	_stars.scale_amount_min = 0.03
+	_stars.scale_amount_max = 0.10
+	_stars.color = Color(0.90, 0.85, 1.0, 0.55)
+	_stars.z_index = -85
+	add_child(_stars)
+
+	# Slow lavender stardust wisps — large, low-alpha, drifting diagonally
+	_stardust = CPUParticles2D.new()
+	_stardust.emitting = true
+	_stardust.amount = 8
+	_stardust.lifetime = 9.0
+	_stardust.one_shot = false
+	_stardust.explosiveness = 0.0
+	_stardust.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_stardust.emission_rect_extents = Vector2(540.0, 960.0)
+	_stardust.direction = Vector2(0.15, -1.0)
+	_stardust.spread = 20.0
+	_stardust.gravity = Vector2.ZERO
+	_stardust.initial_velocity_min = 3.0
+	_stardust.initial_velocity_max = 8.0
+	_stardust.scale_amount_min = 0.25
+	_stardust.scale_amount_max = 0.65
+	_stardust.color = Color(0.62, 0.55, 0.88, 0.20)
+	_stardust.z_index = -85
+	add_child(_stardust)
+
+
+func update_state(_delta: float, distance_m: float, cam_y: float) -> void:
+	var raw_t := inverse_lerp(T_START, T_END, distance_m)
+	var t := clampf(raw_t, 0.0, 1.0)
+	t = t * t * (3.0 - 2.0 * t)
+	modulate.a = t
+	_stars.position = Vector2(540.0, cam_y)
+	_stardust.position = Vector2(540.0, cam_y)
 
 
 func _load_total_h() -> float:
