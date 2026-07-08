@@ -89,26 +89,43 @@ func _build() -> void:
 	add_child(distance_label)
 
 	# --- star counter (top left) ---
-	# Watercolor counter chip (its art already carries the star), number label
-	# sits in the chip's right portion.
-	var star_chip := _ninepatch(HUD + "star_counter_chip.png", 60, 40, 26, 26)
-	star_chip.size = Vector2(210, 84)
+	# Blank 9-sliced capsule (safe to stretch - no art baked into the middle,
+	# unlike the old star_counter_chip.png, whose baked star sat partly in
+	# the stretchable band and got visibly squished at this chip's size) +
+	# a separate, aspect-preserved star icon + the count label on top.
+	const STAR_CHIP_W := 176.0
+	const STAR_CHIP_H := 84.0
+	var star_chip := _ninepatch(CORE + "chip_capsule.png", 30, 30, 18, 18)
+	star_chip.size = Vector2(STAR_CHIP_W, STAR_CHIP_H)
 	star_chip.position = Vector2(40, 78)
 	add_child(star_chip)
 
+	var star_icon := TextureRect.new()
+	star_icon.texture = load("res://assets/sprites/ui/currency/coin_star.png")
+	star_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	star_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var star_icon_size := STAR_CHIP_H * 0.62
+	star_icon.custom_minimum_size = Vector2(star_icon_size, star_icon_size)
+	star_icon.size = star_icon.custom_minimum_size
+	star_icon.position = Vector2(40 + (STAR_CHIP_H - star_icon_size) * 0.5, 78 + (STAR_CHIP_H - star_icon_size) * 0.5)
+	add_child(star_icon)
+
 	star_label = Label.new()
 	star_label.text = "0"
-	star_label.add_theme_font_size_override("font_size", 48)
+	star_label.add_theme_font_size_override("font_size", 44)
 	star_label.add_theme_color_override("font_color", INK)
 	star_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	star_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	star_label.position = Vector2(108, 78)
-	star_label.size = Vector2(130, 84)
+	star_label.position = Vector2(40 + star_icon_size, 78)
+	star_label.size = Vector2(STAR_CHIP_W - star_icon_size - 20, STAR_CHIP_H)
 	add_child(star_label)
 
 	# --- pause button (top right) ---
+	# The circle variant's cream/tan stitched border matches the rest of the
+	# HUD (plaques, star chip); the square variant's blue-gray border stood
+	# out and read as dirty/mismatched against everything else.
 	var pause_btn := TextureButton.new()
-	pause_btn.texture_normal = load(HUD + "btn_pause_square.png")
+	pause_btn.texture_normal = load(HUD + "btn_pause_circle.png")
 	pause_btn.ignore_texture_size = true
 	pause_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	pause_btn.custom_minimum_size = Vector2(96, 96)
