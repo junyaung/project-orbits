@@ -47,21 +47,18 @@ const PLANET_COLORS := {
 	"overheat": Color(0.95, 0.60, 0.50),
 }
 
+const UpperSkyBiomeScript := preload("res://scripts/gameplay/UpperSkyBiome.gd")
+
 ## Test toggle: use the looping Tachyon Drift video as the backdrop instead of
 ## the painted gradient sky. The video is verified working; back on the painted
 ## sky for now. Flip to true to use the Tachyon Drift video again.
 @export var use_video_background := false
 const VIDEO_BG := preload("res://scenes/backgrounds/VideoBiomeBackground.tscn")
 
-## First-biome background: Upper Sky (start altitude) crossfade-stitched into
-## Dream Sky (revealed by climbing), per the handoff's vertical-segment rule
-## (§5.3). Lives in world-space so the camera's climb scrolls it for free -
-## no manual scroll code needed. The painted gradient sky (_build_sky) stays
-## on a CanvasLayer far behind it as a fallback once the player climbs past
-## the stitched art's height.
-@export var use_stitched_sky_background := true
-const STITCHED_SKY_TEX := preload("res://assets/backgrounds/stitched_upper_dream_sky.png")
-const STITCHED_SKY_BOTTOM_MARGIN := 300.0   # world px of Upper Sky visible below the start line
+## Upper Sky biome visual system (layered background, overlay, decor, particles,
+## gimmick cues). Replaces the single stitched-sky sprite with a full layered
+## system per the biome brief. Set false to fall back to the plain gradient.
+@export var use_upper_sky_biome := true
 
 var cat: CatVehicle
 var camera: Camera2D
@@ -70,6 +67,7 @@ var world: Node2D
 var clouds: Node2D
 var traj: Line2D
 var traj_arrow: Polygon2D
+var upper_sky: Node2D
 
 var planets: Array[Planet] = []
 var pickups: Array[Pickup] = []
@@ -111,8 +109,10 @@ func _ready() -> void:
 	world = Node2D.new()
 	add_child(world)
 
-	if use_stitched_sky_background and not use_video_background:
-		_build_stitched_sky()
+	if use_upper_sky_biome and not use_video_background:
+		upper_sky = UpperSkyBiomeScript.new()
+		world.add_child(upper_sky)
+		upper_sky.call("setup", CAT_START.y)
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START
@@ -173,20 +173,6 @@ func _build_sky() -> void:
 		c.set_meta("spd", randf_range(6.0, 16.0))
 		clouds.add_child(c)
 
-## World-space sprite, so the camera's vertical climb scrolls it naturally.
-## Bottom edge sits a little below the cat's start line (Upper Sky visible
-## immediately); the art extends upward into Dream Sky as the player climbs.
-func _build_stitched_sky() -> void:
-	var tex := STITCHED_SKY_TEX
-	if tex == null:
-		return
-	var sky := Sprite2D.new()
-	sky.texture = tex
-	sky.centered = false
-	var bottom_y := CAT_START.y + STITCHED_SKY_BOTTOM_MARGIN
-	sky.position = Vector2(0, bottom_y - tex.get_height())
-	sky.z_index = -100   # behind planets/hazards/pickups, in front of the CanvasLayer gradient
-	world.add_child(sky)
 
 func _make_cloud() -> Node2D:
 	var n := Node2D.new()
@@ -298,6 +284,14 @@ func _spawn_next() -> void:
 	if randf() < 0.16:
 		var sp := Vector2(clamp(x + randf_range(-120, 120), 120, 960), y - randf_range(60, 140))
 		_add_pickup("shield", _clear_of_planets(sp))
+
+	# wind-lane cue: show between planet pairs in the 100-200 m learning phase
+	if upper_sky != null:
+		var dist_here: float = (start_y - y) * 0.1
+		if dist_here > 80.0 and dist_here < 220.0 and randf() < 0.40:
+			upper_sky.call("set_wind_lane", true, (y + prev_y) * 0.5)
+		elif dist_here >= 220.0:
+			upper_sky.call("set_wind_lane", false, 0.0)
 
 	# a later planet's ring may now overlap an earlier hazard - fix or drop those
 	_reconcile_hazards()
@@ -430,6 +424,13 @@ func _process(delta: float) -> void:
 				c.position.x = -120
 				c.position.y = randf_range(120, SCREEN.y - 200)
 	_update_target_indicator()
+	if upper_sky != null:
+		# How close is the current orbit tangent to a perfect upward release?
+		var ideal_frac: float = 0.0
+		if is_orbiting and current_planet != null:
+			var tangent := Vector2.from_angle(orbit_angle + orbit_dir * PI * 0.5)
+			ideal_frac = clampf(-tangent.normalized().y, 0.0, 1.0)
+		upper_sky.call("update_state", delta, distance, camera.position.y, is_orbiting, ideal_frac)
 
 # ---- off-screen "next planet" indicator ----
 func _next_target() -> Planet:
