@@ -81,6 +81,12 @@ const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiom
 const DreamSkyBiomeScript         := preload("res://scripts/gameplay/DreamSkyBiome.gd")
 const BiomeTransitionLayerScript  := preload("res://scripts/gameplay/BiomeTransitionLayer.gd")
 
+## Dream Sky tiles extend this many pixels DOWN into Upper Sky territory.
+## Combined with the organic_edge_fade shader on both boundary tiles,
+## this creates a true cross-dissolve instead of an edge-to-edge seam.
+## Must equal FADE_PX in both UpperSkyBiome and DreamSkyBiome.
+const BIOME_OVERLAP_PX := 1920.0
+
 ## Test toggle: use the looping Tachyon Drift video as the backdrop instead of
 ## the painted gradient sky. The video is verified working; back on the painted
 ## sky for now. Flip to true to use the Tachyon Drift video again.
@@ -148,10 +154,12 @@ func _ready() -> void:
 		world.add_child(upper_sky)
 		upper_sky.call("setup", CAT_START.y)
 
-		# Dream Sky picks up exactly where Upper Sky's painted content ends.
+		# Dream Sky tiles extend BIOME_OVERLAP_PX below Upper Sky's top edge
+		# so the two biomes physically overlap. The organic_edge_fade shader on
+		# both boundary tiles dissolves that overlap into a cross-dissolve.
 		dream_sky = DreamSkyBiomeScript.new()
 		world.add_child(dream_sky)
-		dream_sky.call("setup", upper_sky.call("get_top_world_y"))
+		dream_sky.call("setup", upper_sky.call("get_top_world_y") + BIOME_OVERLAP_PX)
 
 		# Full-screen veil + tint that bridge the seam (1200–1600 m window).
 		_transition_layer = BiomeTransitionLayerScript.new()

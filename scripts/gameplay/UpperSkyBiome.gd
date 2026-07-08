@@ -15,8 +15,14 @@ extends Node2D
 ## at the pixel level, so no keying approach can separate them reliably.
 
 # ── textures ──────────────────────────────────────────────────────────────────
-const WIND_TEX: Texture2D = preload("res://assets/sprites/biomes/upper_sky/wind_lane.png")
+const WIND_TEX:    Texture2D = preload("res://assets/sprites/biomes/upper_sky/wind_lane.png")
+const EDGE_SHADER: Shader    = preload("res://assets/shaders/organic_edge_fade.gdshader")
 const TILE_DIR: String = "res://assets/backgrounds/upper_sky/"
+
+## Pixel height of the organic fade band at the top of the biome (where it meets
+## Dream Sky). This should match BIOME_OVERLAP_PX in GameplayController so the
+## faded zone exactly fills the overlap region.
+const FADE_PX: float = 1920.0
 
 # ── geometry constants ────────────────────────────────────────────────────────
 const SCREEN_W:  float = 1080.0
@@ -102,6 +108,14 @@ func _build_base(biome_base_y: float) -> void:
 		add_child(sp)
 		if i == 0:
 			_base = sp
+			# Tile 0 is the TOPMOST tile — its top edge is the biome seam.
+			# Dissolve it organically so there's no hard rectangle where Upper Sky ends.
+			var mat := ShaderMaterial.new()
+			mat.shader = EDGE_SHADER
+			mat.set_shader_parameter("top_fade", minf(FADE_PX / float(tex.get_height()), 0.55))
+			mat.set_shader_parameter("noise_amount", 0.06)
+			mat.set_shader_parameter("noise_scale", 8.0)
+			sp.material = mat
 		r += float(tex.get_height())
 		i += 1
 	_top_world_y = top_world

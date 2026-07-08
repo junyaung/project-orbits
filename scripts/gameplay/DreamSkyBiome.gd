@@ -9,10 +9,14 @@ extends Node2D
 ## 1200–1600m window, matching BiomeTransitionLayer and UpperSkyBiome so
 ## the three layers blend simultaneously rather than cutting.
 
-const TILE_DIR: String = "res://assets/backgrounds/dream_sky/"
+const TILE_DIR:    String = "res://assets/backgrounds/dream_sky/"
+const EDGE_SHADER: Shader = preload("res://assets/shaders/organic_edge_fade.gdshader")
 
-const T_START := 1200.0
-const T_END   := 1600.0
+const T_START  := 1200.0
+const T_END    := 1600.0
+## Must match BIOME_OVERLAP_PX in GameplayController — the overlap is the
+## zone where both biomes are rendered and the shaders dissolve their edges.
+const FADE_PX  := 1920.0
 
 var _base:     Sprite2D
 var _stars:    CPUParticles2D
@@ -30,6 +34,8 @@ func _build_base(anchor_bottom_y: float) -> void:
 	var top_world: float = anchor_bottom_y - total_h
 	var r: float = 0.0
 	var i: int = 0
+	var last_sp: Sprite2D = null
+	var last_h: float = 0.0
 	while true:
 		var path: String = "%stile_%d.png" % [TILE_DIR, i]
 		if not ResourceLoader.exists(path):
@@ -45,8 +51,19 @@ func _build_base(anchor_bottom_y: float) -> void:
 		add_child(sp)
 		if i == 0:
 			_base = sp
-		r += float(tex.get_height())
+		last_sp = sp
+		last_h = float(tex.get_height())
+		r += last_h
 		i += 1
+	# The last tile is the BOTTOMMOST tile — its bottom edge extends into
+	# Upper Sky territory (the overlap zone). Dissolve it so the seam vanishes.
+	if last_sp != null:
+		var mat := ShaderMaterial.new()
+		mat.shader = EDGE_SHADER
+		mat.set_shader_parameter("bottom_fade", minf(FADE_PX / last_h, 0.65))
+		mat.set_shader_parameter("noise_amount", 0.06)
+		mat.set_shader_parameter("noise_scale", 8.0)
+		last_sp.material = mat
 
 
 func _build_particles() -> void:
