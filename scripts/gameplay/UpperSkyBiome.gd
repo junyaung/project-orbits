@@ -3,7 +3,9 @@ extends Node2D
 ## Layered visual system for the Upper Sky biome (0–300 m).
 ##
 ## Layers (z-order, back to front):
-##   -100  base      — stitched A/B/C/D background (D = transition visual), world-space
+##   -100  base      — stitched footer+A/B/C/D background (D = transition
+##                     visual, footer = mirrored A filling below the start
+##                     line), world-space
 ##    -85  particles — sky dust + cloud mist CPUParticles
 ##    -80  gimmick   — wind-lane cue
 ##
@@ -19,6 +21,11 @@ const WIND_TEX: Texture2D = preload("res://assets/sprites/biomes/upper_sky/wind_
 const SCREEN_W:  float = 1080.0
 const SCREEN_H:  float = 1920.0
 const BIOME_END: float = 300.0   # biome ends at 300 m
+
+## Row (from BG_TEX's top) where the biome's start line sits — i.e. the
+## bottom edge of segment A, before the mirrored footer below it. Printed by
+## tools/prep_upper_sky.py each time upper_sky_base.png is regenerated.
+const CORE_H: float = 6840.0
 
 # ── scene nodes ───────────────────────────────────────────────────────────────
 var _base:      Sprite2D
@@ -60,7 +67,7 @@ func _build_base(biome_base_y: float) -> void:
 	_base = Sprite2D.new()
 	_base.texture = BG_TEX
 	_base.centered = false
-	_base.position = Vector2(0.0, biome_base_y - float(BG_TEX.get_height()))
+	_base.position = Vector2(0.0, biome_base_y - CORE_H)
 	_base.z_index = -100
 	add_child(_base)
 

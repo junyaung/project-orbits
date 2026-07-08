@@ -97,9 +97,19 @@ def ensure_dirs():
 
 
 def do_stitch():
-    """Stitch A/B/C/D → upper_sky_base.png (D = transition visual, same
-    aspect ratio as A/B/C at half resolution)."""
+    """Stitch footer+A/B/C/D → upper_sky_base.png (D = transition visual,
+    same aspect ratio as A/B/C at half resolution).
+
+    The footer is a vertically-flipped copy of segment A, crossfaded onto
+    A's bottom edge exactly like the other segment seams. It fills the area
+    below the cat's start line (visible on-screen below the cat at launch
+    and while orbiting the first planet) so there's no empty gray gap.
+    Returns core_h: the row, measured from the TOP of the saved image, where
+    the ORIGINAL bottom edge of segment A sits (i.e. the biome start line).
+    Godot should position this sprite at world_y = biome_base_y - core_h so
+    that row lines up with the cat's start position."""
     paths = [
+        f"{SRC}/1_map_upper sky_A.png",   # footer source (flipped) + segment A
         f"{SRC}/1_map_upper sky_A.png",
         f"{SRC}/1_map_upper sky_B.png",
         f"{SRC}/1_map_upper sky_C.png",
@@ -110,11 +120,13 @@ def do_stitch():
     width = 1080
 
     imgs = []
-    for p in paths:
+    for idx, p in enumerate(paths):
         im = Image.open(p).convert("RGBA")
         w, h = im.size
         scale = width / float(w)
         im = im.resize((width, int(round(h * scale))), Image.LANCZOS)
+        if idx == 0:
+            im = im.transpose(Image.FLIP_TOP_BOTTOM)   # footer: mirrored A
         imgs.append(im)
 
     total_h = sum(im.height for im in imgs) - overlap * (len(imgs) - 1)
@@ -144,8 +156,10 @@ def do_stitch():
         canvas.paste(band, (0, prev_y))
 
     canvas.save(out_path)
-    print(f"  stitched A+B+C+D → {out_path}  {canvas.size}")
-    return paste_ys
+    core_h = paste_ys[1] + imgs[1].height   # bottom edge of segment A (idx 1) = biome start line
+    print(f"  stitched footer+A+B+C+D → {out_path}  {canvas.size}")
+    print(f"  core_h (biome start line, rows from top) = {core_h}")
+    return paste_ys, core_h
 
 
 def key_and_save(src_name, out_name):
@@ -167,8 +181,9 @@ def main():
     ensure_dirs()
     print("=== Upper Sky asset prep ===")
 
-    print("\n[1] Stitch A+B+C+D (transition) base backgrounds")
-    do_stitch()
+    print("\n[1] Stitch footer+A+B+C+D (transition) base backgrounds")
+    _, core_h = do_stitch()
+    print(f"\n  >>> set UpperSkyBiome.CORE_H = {core_h}.0 in scripts/gameplay/UpperSkyBiome.gd <<<")
 
     print("\n[2] Key wind-current-lane gimmick (baked checker bg)")
     key_and_save("1_map_upper sky_gimmick visual_gentle wind current lane.png", "wind_lane.png")
