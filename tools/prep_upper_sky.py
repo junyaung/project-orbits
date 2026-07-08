@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Prepare Upper Sky biome assets for use in Godot.
 
-1. Stitch A/B/C base backgrounds → assets/backgrounds/upper_sky_base.png
-2. Key baked backgrounds from overlay, gimmick visuals, transition visual
-3. Slice decor set into individual sprites
-4. Output keyed/sliced assets to assets/sprites/biomes/upper_sky/
+1. Stitch A/B/C/D (D = transition visual) base backgrounds →
+   assets/backgrounds/upper_sky_base.png
+2. Key the wind-lane gimmick (still has a baked checker background)
+
+Overlay effect, decor set, and the perfect-sling star-trail cue are NOT
+processed here. Overlay/decor have watercolor content that's cream/white,
+indistinguishable from the baked checker at the pixel level — no keying
+approach can separate them reliably. The star-trail cue was dropped from
+the biome entirely (removed feature, not an asset problem).
 
 Usage:
     python3 tools/prep_upper_sky.py
@@ -36,48 +41,29 @@ CHECKER_HI = 248               # max brightness (also catches near-white bg)
 # ─────────────────────────────────────── background keying ──
 
 def key_checker_background(im):
-    """Flood-fill from borders to knock the neutral-gray checker background
-    to alpha 0. Only removes pixels that are nearly neutral gray (R≈G≈B)
-    — preserves warm cream / coloured watercolor content.
+    """Remove neutral-gray checker background from transparent asset sheets.
+
+    Uses global pixel-by-pixel removal (NOT border flood-fill) so that checker
+    squares enclosed inside art outlines are also removed. Only pixels that are
+    nearly neutral gray (R≈G≈B, value CHECKER_LO–CHECKER_HI) are zeroed;
+    warm cream / coloured watercolor content is preserved.
     Returns a new RGBA image."""
     im = im.convert("RGBA")
     w, h = im.size
     px = im.load()
-
-    def is_checker(x, y):
-        r, g, b, a = px[x, y]
-        if a < ALPHA_T:
-            return True
-        avg = (r + g + b) // 3
-        if avg < CHECKER_LO or avg > CHECKER_HI:
-            return False
-        # neutral = all channels within CHECKER_NEUTRAL_MAX_SAT of each other
-        return (max(r, g, b) - min(r, g, b)) <= CHECKER_NEUTRAL_MAX_SAT
-
-    bg = bytearray(w * h)
-    stack = []
-
-    def push(x, y):
-        i = y * w + x
-        if not bg[i] and is_checker(x, y):
-            bg[i] = 1
-            stack.append((x, y))
-
-    for x in range(w):
-        push(x, 0); push(x, h - 1)
-    for y in range(h):
-        push(0, y); push(w - 1, y)
-    while stack:
-        x, y = stack.pop()
-        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if 0 <= nx < w and 0 <= ny < h:
-                push(nx, ny)
-
     out = im.copy()
     pxo = out.load()
+
     for y in range(h):
         for x in range(w):
-            if bg[y * w + x]:
+            r, g, b, a = px[x, y]
+            if a < ALPHA_T:
+                pxo[x, y] = (0, 0, 0, 0)
+                continue
+            avg = (r + g + b) // 3
+            if avg < CHECKER_LO or avg > CHECKER_HI:
+                continue
+            if (max(r, g, b) - min(r, g, b)) <= CHECKER_NEUTRAL_MAX_SAT:
                 pxo[x, y] = (0, 0, 0, 0)
     return out
 
@@ -104,64 +90,20 @@ def autocrop(im, pad=PAD):
     return im.crop((x0, y0, x1 + 1, y1 + 1))
 
 
-# ─────────────────────────────────────── connected components ──
-
-def find_components(im):
-    """Find connected content regions. Returns list of (x0,y0,x1,y1) bboxes."""
-    w, h = im.size
-    px = im.load()
-    visited = bytearray(w * h)
-    components = []
-
-    for sy in range(h):
-        for sx in range(w):
-            i = sy * w + sx
-            if visited[i] or px[sx, sy][3] <= ALPHA_T:
-                continue
-            # BFS
-            stack = [(sx, sy)]
-            visited[i] = 1
-            x0, y0, x1, y1 = sx, sy, sx, sy
-            count = 0
-            while stack:
-                cx, cy = stack.pop()
-                count += 1
-                x0 = min(x0, cx); y0 = min(y0, cy)
-                x1 = max(x1, cx); y1 = max(y1, cy)
-                for nx, ny in ((cx+1,cy),(cx-1,cy),(cx,cy+1),(cx,cy-1)):
-                    if 0 <= nx < w and 0 <= ny < h:
-                        ni = ny * w + nx
-                        if not visited[ni] and px[nx, ny][3] > ALPHA_T:
-                            visited[ni] = 1
-                            stack.append((nx, ny))
-            if count >= MIN_AREA:
-                bw = x1 - x0 + 1
-                bh = y1 - y0 + 1
-                if bw >= MIN_DIM and bh >= MIN_DIM:
-                    components.append((x0, y0, x1, y1))
-
-    return components
-
-
 # ─────────────────────────────────────── main ──
 
 def ensure_dirs():
     os.makedirs(OUT_SPRITES, exist_ok=True)
-    os.makedirs(OUT_DECOR, exist_ok=True)
-
-
-def stitch_base():
-    """Stitch A/B/C base backgrounds into one tall PNG."""
-    from tools_stitch_import import stitch as _stitch
-    pass
 
 
 def do_stitch():
-    """Stitch A/B/C → upper_sky_base.png (reuse stitch_biome_bg logic inline)."""
+    """Stitch A/B/C/D → upper_sky_base.png (D = transition visual, same
+    aspect ratio as A/B/C at half resolution)."""
     paths = [
         f"{SRC}/1_map_upper sky_A.png",
         f"{SRC}/1_map_upper sky_B.png",
         f"{SRC}/1_map_upper sky_C.png",
+        f"{SRC}/1_map_upper sky_transition visual.png",
     ]
     out_path = f"{OUT_BG}/upper_sky_base.png"
     overlap = 300
@@ -202,7 +144,7 @@ def do_stitch():
         canvas.paste(band, (0, prev_y))
 
     canvas.save(out_path)
-    print(f"  stitched A+B+C → {out_path}  {canvas.size}")
+    print(f"  stitched A+B+C+D → {out_path}  {canvas.size}")
     return paste_ys
 
 
@@ -221,71 +163,17 @@ def key_and_save(src_name, out_name):
     return cropped
 
 
-def slice_decor():
-    """Slice decor set into individual sprites."""
-    src_path = f"{SRC}/1_map_upper sky_decor set.png"
-    im = Image.open(src_path)
-    keyed = key_background(im)
-
-    comps = find_components(keyed)
-    # sort top-to-bottom, left-to-right
-    comps.sort(key=lambda b: (b[1], b[0]))
-
-    print(f"  decor set: found {len(comps)} components")
-
-    # Save montage for inspection
-    THUMB = 160
-    cols = 6
-    rows = (len(comps) + cols - 1) // cols
-    montage = Image.new("RGBA", (cols * THUMB, rows * THUMB), (40, 40, 40, 255))
-
-    for idx, (x0, y0, x1, y1) in enumerate(comps):
-        crop = keyed.crop((max(0, x0 - PAD), max(0, y0 - PAD),
-                           min(im.width, x1 + PAD + 1), min(im.height, y1 + PAD + 1)))
-        out_path = f"{OUT_DECOR}/decor_{idx:02d}.png"
-        crop.save(out_path)
-
-        thumb = crop.copy()
-        thumb.thumbnail((THUMB - 4, THUMB - 4), Image.LANCZOS)
-        tx = (idx % cols) * THUMB + (THUMB - thumb.width) // 2
-        ty = (idx // cols) * THUMB + (THUMB - thumb.height) // 2
-        montage.paste(thumb, (tx, ty), thumb)
-
-        # label
-        try:
-            draw = ImageDraw.Draw(montage)
-            draw.text((tx + 2, ty + 2), str(idx), fill=(255, 255, 100, 255))
-        except Exception:
-            pass
-
-    montage_path = f"{OUT_DECOR}/_montage.png"
-    montage.save(montage_path)
-    print(f"  decor montage → {montage_path}")
-    return len(comps)
-
-
 def main():
     ensure_dirs()
     print("=== Upper Sky asset prep ===")
 
-    print("\n[1] Stitch A+B+C base backgrounds")
+    print("\n[1] Stitch A+B+C+D (transition) base backgrounds")
     do_stitch()
 
-    print("\n[2] Key overlay effect")
-    key_and_save("1_map_upper sky_overlay effect.png", "overlay.png")
-
-    print("\n[3] Key gimmick visuals")
+    print("\n[2] Key wind-current-lane gimmick (baked checker bg)")
     key_and_save("1_map_upper sky_gimmick visual_gentle wind current lane.png", "wind_lane.png")
-    key_and_save("1_map_upper sky_gimmick visual_perfect sling star trail cue.png", "sling_trail.png")
 
-    print("\n[4] Key transition visual")
-    key_and_save("1_map_upper sky_transition visual.png", "transition.png")
-
-    print("\n[5] Slice decor set")
-    n = slice_decor()
-
-    print(f"\nDone. {n} decor sprites in {OUT_DECOR}/")
-    print("Review decor/_montage.png to map indices → names.")
+    print("\nDone. Overlay effect, decor set, and star-trail cue skipped.")
 
 
 if __name__ == "__main__":

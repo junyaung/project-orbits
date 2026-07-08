@@ -425,12 +425,7 @@ func _process(delta: float) -> void:
 				c.position.y = randf_range(120, SCREEN.y - 200)
 	_update_target_indicator()
 	if upper_sky != null:
-		# How close is the current orbit tangent to a perfect upward release?
-		var ideal_frac: float = 0.0
-		if is_orbiting and current_planet != null:
-			var tangent := Vector2.from_angle(orbit_angle + orbit_dir * PI * 0.5)
-			ideal_frac = clampf(-tangent.normalized().y, 0.0, 1.0)
-		upper_sky.call("update_state", delta, distance, camera.position.y, is_orbiting, ideal_frac)
+		upper_sky.call("update_state", delta, distance, camera.position.y, is_orbiting, 0.0)
 
 # ---- off-screen "next planet" indicator ----
 func _next_target() -> Planet:
