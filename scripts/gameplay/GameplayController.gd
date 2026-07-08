@@ -138,8 +138,8 @@ func _ready() -> void:
 	_load_best()
 	if use_video_background:
 		add_child(VIDEO_BG.instantiate())   # looping video backdrop (layer -10)
-	else:
-		_build_sky()
+	elif not use_upper_sky_biome:
+		_build_sky()   # fallback gradient; skipped when biome system is active
 	world = Node2D.new()
 	add_child(world)
 
