@@ -567,7 +567,8 @@ func _add_hazard(kind: String, pos: Vector2) -> void:
 # ---------------------------------------------------------------- loop ----
 func _physics_process(delta: float) -> void:
 	if dev_flythrough:
-		_dev_fly(delta)
+		if not paused:              # P freezes the fly-through dolly to study a frame
+			_dev_fly(delta)
 		return
 	if not started or game_over or paused:
 		return
@@ -878,15 +879,20 @@ func _burst(pos: Vector2, tex_key: String, col: Color, amount: int, speed: float
 			pt.queue_free())
 
 # ----------------------------------------------------------------- dev ----
-## Press F to toggle free-fly map review at runtime (see dev_flythrough).
+## Dev keys: F toggles free-fly map review (see dev_flythrough); P pauses/resumes
+## the run (same as the HUD pause button) so you can freeze the frame while testing.
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event as InputEventKey).keycode == KEY_F:
-		dev_flythrough = not dev_flythrough
-		if dev_flythrough:
-			hud.show_warning("DEV FLY  ·  UP/DOWN move  ·  SHIFT turbo  ·  F exit")
-		elif hud.warning != null:
-			hud.warning.visible = false
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	match (event as InputEventKey).keycode:
+		KEY_F:
+			dev_flythrough = not dev_flythrough
+			if dev_flythrough:
+				hud.show_warning("DEV FLY  ·  UP/DOWN move  ·  SHIFT turbo  ·  F exit")
+			elif hud.warning != null:
+				hud.warning.visible = false
+		KEY_P:
+			_toggle_pause()
 
 
 ## Free-fly map review (see dev_flythrough). The cat is a passive camera dolly:
