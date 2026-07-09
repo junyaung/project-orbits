@@ -33,7 +33,11 @@ func setup(_kind: String) -> void:
 		"jelly":
 			drift = Vector2(randf_range(-24, 24), randf_range(-20, 20))
 
-func _process(delta: float) -> void:
+# Move on the PHYSICS clock, same fixed step as the cat and camera. Doing this
+# in _process instead made hazards drift at the (variable, often higher) render
+# rate while the world scrolled at 60Hz -- so a meteor visibly slid / "dragged"
+# relative to everything else. Lockstep here keeps it glued to the world.
+func _physics_process(delta: float) -> void:
 	_t += delta
 	position += drift * delta
 	if kind == "rock":

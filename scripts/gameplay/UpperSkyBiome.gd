@@ -58,11 +58,10 @@ func setup(biome_base_y: float) -> void:
 func update_state(delta: float, distance_m: float, cam_y: float,
 		_is_orbiting: bool, _orbit_ideal_frac: float) -> void:
 	_t += delta
-	# Fade out as Dream Sky fades in above; both biomes share the same window
-	var raw_t := inverse_lerp(T_START, T_END, distance_m)
-	var fade_t := clampf(raw_t, 0.0, 1.0)
-	fade_t = fade_t * fade_t * (3.0 - 2.0 * fade_t)
-	modulate.a = 1.0 - fade_t
+	# Upper Sky no longer cross-fades out: the continuous BackgroundColumn
+	# butt-joins onto its opaque top edge, so Upper Sky stays fully visible for
+	# its whole painted extent (fading it out just left gray below ~1500m).
+	modulate.a = 1.0
 	_update_particles(cam_y)
 	_animate_wind_lane(delta, cam_y)
 
@@ -84,40 +83,84 @@ func get_top_world_y() -> float:
 
 # ─────────────────────────── builders ────────────────────────────────────────
 
-## Stack the background tiles in world space. meta.json's core_h is the row
-## (from the canvas top) of the biome start line, so canvas row 0 sits at
-## world_y = biome_base_y - core_h. Tiles are contiguous top→bottom, so each
-## one is placed at that origin plus its cumulative height from the top.
+## Cross-dissolve band for the tile_2→tile_3 seam — the first internal seam the
+## player encounters (~177m altitude). 600px ≈ 30% of the 1920px viewport, wide
+## enough for cloud/sky art to dissolve as drifting mist rather than a hard cut.
+## The footer constraint (tile stack must cover the game-start camera bottom at
+## Y=3010) limits total seam shrinkage to 675px, so only this one seam is treated.
+## tile_0/1 (1181m) and tile_1/2 (586m) remain hard cuts; they appear later when
+## the player is more habituated, and the biome-transition veil at 1200m masks the
+## tile_0/1 edge entirely.
+const SEAM_PX: float = 600.0
+
+## Stack tiles in world space. top_world is anchored to biome_base_y - core_h
+## and does NOT change — DreamSky calls get_top_world_y() to place itself.
+## tile_3 (and the tiny footer tile_4 behind it) are shifted up by SEAM_PX,
+## overlapping tile_2. Tile_2's bottom_fade shader dissolves into tile_3,
+## leaving the stack bottom at 3085 — 75px below the game-start camera edge.
 func _build_base(biome_base_y: float) -> void:
 	var core_h: float = _load_core_h()
 	var top_world: float = biome_base_y - core_h
-	var r: float = 0.0
-	var i: int = 0
+
+	var textures: Array[Texture2D] = []
+	var idx: int = 0
 	while true:
-		var path: String = "%stile_%d.png" % [TILE_DIR, i]
+		var path: String = "%stile_%d.png" % [TILE_DIR, idx]
 		if not ResourceLoader.exists(path):
 			break
 		var tex: Texture2D = load(path)
 		if tex == null:
 			break
+		textures.append(tex)
+		idx += 1
+
+	var n: int = textures.size()
+	var r: float = 0.0
+	var seam_offset: float = 0.0   # accumulates only at the tile_2→3 boundary
+
+	for i in n:
+		var tex: Texture2D = textures[i]
+		var h: float = float(tex.get_height())
+
+		# Pull tile_3 (and all tiles below it) up by SEAM_PX so it overlaps tile_2.
+		if i == 3:
+			seam_offset += SEAM_PX
+
 		var sp := Sprite2D.new()
 		sp.texture = tex
 		sp.centered = false
-		sp.position = Vector2(0.0, top_world + r)
-		sp.z_index = -100
+		sp.position = Vector2(0.0, top_world + r - seam_offset)
+		# Upper tiles render in front so their bottom_fade reveals the tile behind.
+		sp.z_index = -100 + (n - 1 - i)
 		add_child(sp)
+
 		if i == 0:
 			_base = sp
-			# Tile 0 is the TOPMOST tile — its top edge is the biome seam.
-			# Dissolve it organically so there's no hard rectangle where Upper Sky ends.
+
+		if i == 0:
+			# Topmost tile: OPAQUE top edge. The continuous BackgroundColumn now
+			# butt-joins directly onto Upper Sky's top (color-matched), so this
+			# tile must NOT fade to transparent there -- an old top_fade left a
+			# transparent band that showed through as gray (~1500m). No fade.
 			var mat := ShaderMaterial.new()
 			mat.shader = EDGE_SHADER
-			mat.set_shader_parameter("top_fade", minf(FADE_PX / float(tex.get_height()), 0.55))
-			mat.set_shader_parameter("noise_amount", 0.06)
-			mat.set_shader_parameter("noise_scale", 8.0)
+			mat.set_shader_parameter("top_fade",     0.0)
+			mat.set_shader_parameter("bottom_fade",  0.0)
+			mat.set_shader_parameter("noise_amount", 0.0)
+			mat.set_shader_parameter("noise_scale",  8.0)
 			sp.material = mat
-		r += float(tex.get_height())
-		i += 1
+		elif i == 2:
+			# tile_2: bottom edge dissolves into tile_3 over the 600px overlap band.
+			var mat := ShaderMaterial.new()
+			mat.shader = EDGE_SHADER
+			mat.set_shader_parameter("top_fade",     0.0)
+			mat.set_shader_parameter("bottom_fade",  SEAM_PX / h)
+			mat.set_shader_parameter("noise_amount", 0.10)
+			mat.set_shader_parameter("noise_scale",  5.0)
+			sp.material = mat
+
+		r += h
+
 	_top_world_y = top_world
 
 

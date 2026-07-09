@@ -13,6 +13,18 @@ const CAT_START := Vector2(540, 2050)
 const CAM_LEAD := 400.0   # how far ahead (up) the camera sits; keeps the cat low so you see what's coming
 const FIRST_PLANET_Y := 1250.0
 
+## World scale. Background tiles are 2752px tall and OVERLAP by COLUMN_SEAM_PX for
+## a cross-dissolve (the art isn't painted to tile, so a hard butt-join shows
+## content seams). We scale by the NET advance (tile minus overlap) so each image
+## still adds exactly 300m of new altitude: N images = N*300m, biomes land on a
+## clean 1500/3000/4500/6000m grid, and the ~83m overlap dissolves seamlessly.
+const TILE_PX := 2752.0
+const TILE_METERS := 300.0
+const COLUMN_SEAM_PX := 600.0                       # overlap blended between tiles
+const NET_ADVANCE_PX := TILE_PX - COLUMN_SEAM_PX     # 2152 -> one image = +300m
+const METERS_PER_PX := TILE_METERS / NET_ADVANCE_PX  # 0.139405...
+const PX_PER_METER := NET_ADVANCE_PX / TILE_METERS   # 7.17333...
+
 ## Upper Sky difficulty zones (matches the biome's ~1500 m painted length).
 ## Each array is a value at the matching ZONE_BREAKS distance (meters);
 ## _zone_value() linearly interpolates between consecutive breakpoints, so
@@ -29,17 +41,21 @@ const FIRST_PLANET_Y := 1250.0
 ## No "overheat" planet kind is ever spawned here (see _spawn_next's kinds
 ## list) - that gimmick is reserved for a later biome, not this friendly one.
 const ZONE_BREAKS:         Array[float] = [0.0,   300.0, 600.0, 900.0,  1200.0, 1500.0]
-const ZONE_GAP_MIN:        Array[float] = [480.0, 560.0, 640.0, 640.0,  640.0,  640.0]
-const ZONE_GAP_MAX:        Array[float] = [620.0, 760.0, 900.0, 1100.0, 1500.0, 1920.0]
+## Vertical spacing between rows. Upper Sky is the friendly intro biome, so keep
+## rows CLOSE and the max jump modest -- denser = more planets on screen and you
+## can always reach the next one (the old 900-1920px max left near-empty stretches
+## that could strand you). The min..max range keeps spacing randomized, not a grid.
+const ZONE_GAP_MIN:        Array[float] = [380.0, 390.0, 400.0, 420.0,  440.0,  460.0]
+const ZONE_GAP_MAX:        Array[float] = [540.0, 560.0, 580.0, 620.0,  660.0,  720.0]
 const ZONE_HAZARD_CHANCE:  Array[float] = [0.0,   0.0,   0.30,  0.45,   0.55,   0.55]
 const ZONE_METEOR_FRAC:    Array[float] = [0.0,   0.0,   0.0,   0.0,    0.0,    0.45]
 const ZONE_SHIELD_CHANCE:  Array[float] = [0.0,   0.0,   0.0,   0.0,    0.22,   0.20]
 const ZONE_HEAT_MULT:      Array[float] = [0.40,  0.55,  0.70,  0.85,   1.0,    1.0]
-## Chance a "row" spawns two side-by-side planets instead of one, giving the
-## player a real choice of where to sling next rather than a single forced
-## path. Upper Sky is the generous, friendly biome, so this stays the
-## majority case throughout - only tapering slightly as hazards ramp up.
-const ZONE_BRANCH_CHANCE:  Array[float] = [0.90,  0.85,  0.75,  0.65,   0.60,   0.60]
+## Chance a "row" spawns two side-by-side planets (a left/right fork) instead of
+## one. Kept LOW so most rows are a single planet at a randomized offset and a
+## fork is an occasional treat -- high values made every row read as a coupled
+## pair. A touch more forking in the early tutorial zone, tapering to ~18%.
+const ZONE_BRANCH_CHANCE:  Array[float] = [0.28,  0.25,  0.22,  0.20,   0.18,   0.18]
 
 ## Orbit-radius range used for BOTH planets in a branching row. Slightly
 ## smaller than the single-row 155-205 range so a row of two comfortably
@@ -78,14 +94,45 @@ const PLANET_COLORS := {
 }
 
 const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiome.gd")
-const DreamSkyBiomeScript         := preload("res://scripts/gameplay/DreamSkyBiome.gd")
-const BiomeTransitionLayerScript  := preload("res://scripts/gameplay/BiomeTransitionLayer.gd")
+const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundColumn.gd")
+
+## Number of 300m tiles in res://assets/backgrounds/_column/ (tile_0..N-1,
+## bottom to top). 20 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) = 6000m,
+## covering 1500m to 7500m. Add 5 more per biome (A B C D transition) and bump.
+const COLUMN_TILE_COUNT := 20
 
 ## Dream Sky tiles extend this many pixels DOWN into Upper Sky territory.
 ## Combined with the organic_edge_fade shader on both boundary tiles,
 ## this creates a true cross-dissolve instead of an edge-to-edge seam.
 ## Must equal FADE_PX in both UpperSkyBiome and DreamSkyBiome.
 const BIOME_OVERLAP_PX := 1920.0
+
+## KEY LESSON: a biome cross-fade is only smooth if BOTH biomes fully cover the
+## screen for the entire fade window. With just one screen-height of overlap
+## (BIOME_OVERLAP_PX = 1920px), the two stacks' art only both-cover the screen
+## at a single instant -- so mid-fade there's always a band where one biome has
+## faded but the other's art doesn't reach, and the screen darkens/gaps. Every
+## handoff therefore needs an overlap of ~2.5 screens so there's a real altitude
+## band (here ~288m) where both cover, and the fade window lives inside it.
+##
+## DreamSky -> PastelGalaxy: 4800px overlap. Pastel bottom -> ~2611m, both-cover
+## band 2707-2995m, fade window 2720-2980m (set in Dream/Pastel scripts).
+const DREAM_TO_PASTEL_OVERLAP_PX := 4800.0
+## PastelGalaxy -> KuiperBelt: 4800px overlap. Kuiper bottom -> ~4128m, both-cover
+## band 4224-4512m, fade window 4240-4500m (set in Pastel/Kuiper scripts).
+const PASTEL_TO_KUIPER_OVERLAP_PX := 4800.0
+
+## DEV: jump straight to this altitude (meters) instead of playing from 0.
+## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
+@export var dev_start_meters: float = 0.0
+
+## DEV: free-fly map review. When true, the cat isn't played -- it just cruises
+## straight up so you can inspect the whole background column without swinging
+## through planets. Controls (keyboard, editor): UP = faster, DOWN = descend,
+## SHIFT = turbo, no input = steady cruise. No planets/hazards/heat/game-over.
+## Also togglable at runtime with the F key.
+@export var dev_flythrough: bool = false
+const FLY_SPEED := 1000.0   # px/sec full speed (~109 m/s at the 300m/tile scale)
 
 ## Test toggle: use the looping Tachyon Drift video as the backdrop instead of
 ## the painted gradient sky. The video is verified working; back on the painted
@@ -105,9 +152,8 @@ var world: Node2D
 var clouds: Node2D
 var traj: Line2D
 var traj_arrow: Polygon2D
-var upper_sky: Node2D
-var dream_sky: Node2D
-var _transition_layer: Node2D
+var upper_sky:    Node2D
+var background_column: Node2D
 
 var planets: Array[Planet] = []
 var pickups: Array[Pickup] = []
@@ -124,7 +170,8 @@ var heat := 0.0
 var distance := 0.0
 var stars := 0
 var perfects := 0
-var shield_count := 0   # stacks: each hazard hit consumes one charge
+var shield_count := 0       # stacks: each hazard hit consumes one charge
+var shields_collected := 0  # lifetime-per-run total (never decremented) for run logging
 var best := 0
 
 var started := false
@@ -154,16 +201,17 @@ func _ready() -> void:
 		world.add_child(upper_sky)
 		upper_sky.call("setup", CAT_START.y)
 
-		# Dream Sky tiles extend BIOME_OVERLAP_PX below Upper Sky's top edge
-		# so the two biomes physically overlap. The organic_edge_fade shader on
-		# both boundary tiles dissolves that overlap into a cross-dissolve.
-		dream_sky = DreamSkyBiomeScript.new()
-		world.add_child(dream_sky)
-		dream_sky.call("setup", upper_sky.call("get_top_world_y") + BIOME_OVERLAP_PX)
-
-		# Full-screen veil + tint that bridge the seam (1200–1600 m window).
-		_transition_layer = BiomeTransitionLayerScript.new()
-		world.add_child(_transition_layer)
+		# Everything above Upper Sky is now ONE continuous streamed column of
+		# butt-joined 300m tiles (DreamSky -> Pastel -> Kuiper -> ...), color-
+		# matched at every boundary. No alpha cross-fades between biomes; only
+		# the tiles near the camera are instanced (see BackgroundColumn).
+		background_column = BackgroundColumnScript.new()
+		world.add_child(background_column)
+		# Anchor the column's bottom (DreamSky's entry) at exactly 1500m so the
+		# biome grid is clean, regardless of Upper Sky's (old-system) height. The
+		# column's bottom tile dissolves down over Upper Sky's top behind it.
+		var col_bottom_y: float = CAT_START.y - 1500.0 * PX_PER_METER
+		background_column.call("setup", col_bottom_y, COLUMN_TILE_COUNT)
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START
@@ -184,6 +232,9 @@ func _ready() -> void:
 	add_child(hud)
 
 	_seed_world()
+
+	if dev_start_meters > 0.0:
+		_dev_warp(dev_start_meters)
 
 	# Launch begins the run immediately - no separate in-scene Start tap.
 	started = true
@@ -300,7 +351,7 @@ func _random_kind() -> String:
 func _spawn_next() -> void:
 	# distance (in meters) of the LAST placed row - the new one lands
 	# further still, so zone lookups use this as "where we are now"
-	var dist_here: float = (start_y - top_spawn_y) * 0.1
+	var dist_here: float = (start_y - top_spawn_y) * METERS_PER_PX
 
 	var gap_min: float = _zone_value(dist_here, ZONE_GAP_MIN)
 	var gap_max: float = _zone_value(dist_here, ZONE_GAP_MAX)
@@ -534,6 +585,9 @@ func _add_hazard(kind: String, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- loop ----
 func _physics_process(delta: float) -> void:
+	if dev_flythrough:
+		_dev_fly(delta)
+		return
 	if not started or game_over or paused:
 		return
 
@@ -556,7 +610,7 @@ func _physics_process(delta: float) -> void:
 
 	heat = max(0.0, heat - HEAT_COOL * delta)
 
-	distance = max(distance, (start_y - cat.position.y) * 0.1)
+	distance = max(distance, (start_y - cat.position.y) * METERS_PER_PX)
 	hud.set_distance(distance)
 	hud.set_heat(heat)
 
@@ -585,12 +639,25 @@ func _process(delta: float) -> void:
 				c.position.x = -120
 				c.position.y = randf_range(120, SCREEN.y - 200)
 	_update_target_indicator()
+	# Biome cross-fades are driven by CAMERA altitude, not the `distance` score.
+	# `distance` is max()-monotonic and LEAPS when the cat slingshots off a planet
+	# (and never reverses). Feeding that jumpy value into a fixed-width smoothstep
+	# window made the fade snap across in a single frame -> a hard biome cut
+	# (seen ~4480m, right before a fade window's end). The camera position is
+	# lerp-smoothed every frame (see below), so its altitude changes continuously
+	# even through a slingshot; the backgrounds are painted at fixed world Y, so
+	# tracking the camera is also the *correct* driver for a positional dissolve.
+	var cam_alt: float = (start_y - camera.position.y) * METERS_PER_PX
 	if upper_sky != null:
-		upper_sky.call("update_state", delta, distance, camera.position.y, is_orbiting, 0.0)
-	if dream_sky != null:
-		dream_sky.call("update_state", delta, distance, camera.position.y)
-	if _transition_layer != null:
-		_transition_layer.call("update", delta, distance, camera.position.y)
+		# Subtract the biome node's own Y offset so particle emitters (which use
+		# local coordinates) stay centred on the camera even when the background
+		# has been slid via _dev_warp.  When offset is 0 this is a no-op.
+		upper_sky.call("update_state", delta, cam_alt,
+				camera.position.y - upper_sky.position.y, is_orbiting, 0.0)
+	if background_column != null:
+		# Stream tiles in/out around the camera. Subtract the column's own Y
+		# offset so streaming stays correct after a _dev_warp slide.
+		background_column.call("update_view", camera.position.y - background_column.position.y)
 
 # ---- off-screen "next planet" indicator ----
 func _next_target() -> Planet:
@@ -715,6 +782,7 @@ func _check_pickups() -> void:
 				_burst(pk.position, "twinkle", Color(1.0, 0.85, 0.45), 10, 130, 0.6)
 			else:
 				shield_count += 1
+				shields_collected += 1
 				cat.set_shield(true)
 				hud.set_shield_count(shield_count)
 				_burst(pk.position, "sparkle", Color(0.7, 0.9, 1.0), 12, 120, 0.6)
@@ -828,12 +896,90 @@ func _burst(pos: Vector2, tex_key: String, col: Color, amount: int, speed: float
 		if is_instance_valid(pt):
 			pt.queue_free())
 
+# ----------------------------------------------------------------- dev ----
+## Press F to toggle free-fly map review at runtime (see dev_flythrough).
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).keycode == KEY_F:
+		dev_flythrough = not dev_flythrough
+		if dev_flythrough:
+			hud.show_warning("DEV FLY  ·  UP/DOWN move  ·  SHIFT turbo  ·  F exit")
+		elif hud.warning != null:
+			hud.warning.visible = false
+
+
+## Free-fly map review (see dev_flythrough). The cat is a passive camera dolly:
+## it cruises straight up so the whole background column scrolls past for
+## inspection, with no orbiting/heat/hazards/game-over. UP=faster, DOWN=descend,
+## SHIFT=turbo, no input=steady cruise.
+func _dev_fly(delta: float) -> void:
+	# Gentle default cruise up so you can actually look at the art; hold UP to
+	# move up faster, DOWN to descend, SHIFT for turbo on either.
+	var v := 0.6                                   # idle: gentle cruise up
+	if Input.is_action_pressed("ui_up"):
+		v = 1.0
+	elif Input.is_action_pressed("ui_down"):
+		v = -1.0                                   # descend to re-check a band
+	var spd := FLY_SPEED * v
+	if Input.is_key_pressed(KEY_SHIFT):
+		spd *= 2.5                                 # turbo
+	# Up = negative Y. Don't fly below the start floor.
+	cat.position.y = minf(cat.position.y - spd * delta, start_y)
+
+	# Camera snaps to the cat (no lerp) so scrubbing feels immediate.
+	camera.position = Vector2(540.0, cat.position.y - CAM_LEAD)
+
+	# Keep the altitude readout live so you know where you are.
+	distance = maxf(0.0, (start_y - cat.position.y) * METERS_PER_PX)
+	hud.set_distance(distance)
+
+
+## Warp to a target altitude without playing through the earlier zones.
+##
+## Rather than moving the cat to a large negative Y (which can cause rendering
+## issues with the background tiles), we slide the painted biome backgrounds
+## DOWN by `meters * 10` pixels so their correct visual band appears right in
+## front of the camera at its normal start position.  start_y is offset by the
+## same amount so all distance/zone calculations remain accurate.
+func _dev_warp(meters: float) -> void:
+	var offset := meters * PX_PER_METER
+
+	# Slide backgrounds so the right altitude is visible at the normal camera Y.
+	if upper_sky != null:
+		upper_sky.position.y += offset
+	if background_column != null:
+		background_column.position.y += offset
+
+	# Adjust start_y so distance reads correctly from the normal cat position.
+	start_y = CAT_START.y + offset
+	distance = meters
+
+	# Re-seed planets: the initial _seed_world() ran with the old start_y, so
+	# zone tables (hazards, gaps, meteors) were wrong. Clear and redo with the
+	# adjusted start_y so the very first row uses 1200m parameters.
+	for p in planets:
+		if is_instance_valid(p): p.queue_free()
+	planets.clear()
+	for pk in pickups:
+		if is_instance_valid(pk): pk.queue_free()
+	pickups.clear()
+	for hz in hazards:
+		if is_instance_valid(hz): hz.queue_free()
+	hazards.clear()
+	top_spawn_y = FIRST_PLANET_Y
+	last_planet_x = 540.0
+	_add_planet("meadow", Vector2(540.0, FIRST_PLANET_Y), 200.0)
+	for i in 8:
+		_spawn_next()
+
 # --------------------------------------------------------------- state ----
 func _toggle_pause() -> void:
 	if game_over:
 		return
 	paused = not paused
 	hud.tutorial.visible = not paused
+	for hz in hazards:
+		hz.set_physics_process(not paused)   # hazards move on the physics clock now
 	if paused:
 		hud.show_warning("Paused")
 	else:
@@ -857,6 +1003,7 @@ func _fail(reason: String) -> void:
 	if d > best:
 		best = d
 		_save_best()
+	_log_run(reason)
 	hud.show_result(d, stars, perfects, best, reason)
 
 func _load_best() -> void:
@@ -866,5 +1013,60 @@ func _load_best() -> void:
 
 func _save_best() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load("user://orbits.cfg")   # keep other sections (stats)
 	cfg.set_value("score", "best", best)
 	cfg.save("user://orbits.cfg")
+
+## ECONOMY DATA: append every completed run to user://run_log.jsonl (one JSON per
+## line) and roll lifetime aggregates into user://orbits.cfg [stats]. Use these
+## to size shop prices later -- e.g. "coins per 100m" tells you how fast a player
+## earns, so an item costing N coins ≈ N / (coins-per-100m) * 100 metres of play.
+## File lives in the app's user data dir (macOS: ~/Library/Application Support/
+## Godot/app_userdata/ORBITS - Cat & Manhole/).
+func _log_run(reason: String) -> void:
+	var dist_m := int(distance)
+	var rec := {
+		"time":       Time.get_datetime_string_from_system(),
+		"distance_m": dist_m,
+		"biome":      _biome_at(dist_m),
+		"coins":      stars,               # star pickups (never decremented)
+		"shields":    shields_collected,   # lifetime collected this run
+		"perfects":   perfects,
+		"end":        reason,
+	}
+	var f := FileAccess.open("user://run_log.jsonl", FileAccess.READ_WRITE)
+	if f == null:
+		f = FileAccess.open("user://run_log.jsonl", FileAccess.WRITE)
+	else:
+		f.seek_end()
+	f.store_line(JSON.stringify(rec))
+	f.close()
+
+	# roll lifetime aggregates so pricing math needs no log parsing
+	var cfg := ConfigFile.new()
+	cfg.load("user://orbits.cfg")
+	var runs := int(cfg.get_value("stats", "runs", 0)) + 1
+	var tot_coins := int(cfg.get_value("stats", "total_coins", 0)) + stars
+	var tot_shields := int(cfg.get_value("stats", "total_shields", 0)) + shields_collected
+	var tot_m := int(cfg.get_value("stats", "total_meters", 0)) + dist_m
+	cfg.set_value("stats", "runs", runs)
+	cfg.set_value("stats", "total_coins", tot_coins)
+	cfg.set_value("stats", "total_shields", tot_shields)
+	cfg.set_value("stats", "total_meters", tot_m)
+	cfg.save("user://orbits.cfg")
+
+	# dev readout for economy tuning
+	var coins_per_run := float(tot_coins) / float(runs)
+	var coins_per_100m := float(tot_coins) / maxf(1.0, float(tot_m)) * 100.0
+	print("[run] %dm  coins=%d shields=%d perfects=%d (%s)  |  lifetime: %d runs, %.1f coins/run, %.2f coins/100m" % [
+		dist_m, stars, shields_collected, perfects, reason,
+		runs, coins_per_run, coins_per_100m])
+
+## Which biome a given altitude falls in (matches the 1500m-per-biome column).
+func _biome_at(m: int) -> String:
+	if m < 1500:  return "upper_sky"
+	if m < 3000:  return "dream_sky"
+	if m < 4500:  return "pastel_galaxy"
+	if m < 6000:  return "kuiper_belt"
+	if m < 7500:  return "oort_cloud"
+	return "beyond"
