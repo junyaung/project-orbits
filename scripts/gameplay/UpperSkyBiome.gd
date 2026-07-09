@@ -19,20 +19,14 @@ const WIND_TEX:    Texture2D = preload("res://assets/sprites/biomes/upper_sky/wi
 const EDGE_SHADER: Shader    = preload("res://assets/shaders/organic_edge_fade.gdshader")
 const TILE_DIR: String = "res://assets/backgrounds/upper_sky/"
 
-## Pixel height of the organic fade band at the top of the biome (where it meets
-## Dream Sky). This should match BIOME_OVERLAP_PX in GameplayController so the
-## faded zone exactly fills the overlap region.
-const FADE_PX: float = 1920.0
-
 # ── geometry constants ────────────────────────────────────────────────────────
+# Upper Sky is 0-1500m; the continuous BackgroundColumn butt-joins onto its
+# opaque top edge (Upper Sky no longer fades out), so the old fade-window /
+# FADE_PX crossfade constants are gone.
 const SCREEN_W:  float = 1080.0
 const SCREEN_H:  float = 1920.0
 const BIOME_END: float = 1500.0   # biome covers ~1500 m
 const DEFAULT_CORE_H: float = 15015.0   # fallback if meta.json is missing
-## Fade-out window, matching DreamSkyBiome and BiomeTransitionLayer so all
-## three layers blend in sync (dream fades in, upper fades out, veil peaks).
-const T_START: float = 1200.0
-const T_END:   float = 1600.0
 
 # ── scene nodes ───────────────────────────────────────────────────────────────
 var _base:      Sprite2D

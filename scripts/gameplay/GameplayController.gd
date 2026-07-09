@@ -101,27 +101,6 @@ const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundCo
 ## covering 1500m to 7500m. Add 5 more per biome (A B C D transition) and bump.
 const COLUMN_TILE_COUNT := 20
 
-## Dream Sky tiles extend this many pixels DOWN into Upper Sky territory.
-## Combined with the organic_edge_fade shader on both boundary tiles,
-## this creates a true cross-dissolve instead of an edge-to-edge seam.
-## Must equal FADE_PX in both UpperSkyBiome and DreamSkyBiome.
-const BIOME_OVERLAP_PX := 1920.0
-
-## KEY LESSON: a biome cross-fade is only smooth if BOTH biomes fully cover the
-## screen for the entire fade window. With just one screen-height of overlap
-## (BIOME_OVERLAP_PX = 1920px), the two stacks' art only both-cover the screen
-## at a single instant -- so mid-fade there's always a band where one biome has
-## faded but the other's art doesn't reach, and the screen darkens/gaps. Every
-## handoff therefore needs an overlap of ~2.5 screens so there's a real altitude
-## band (here ~288m) where both cover, and the fade window lives inside it.
-##
-## DreamSky -> PastelGalaxy: 4800px overlap. Pastel bottom -> ~2611m, both-cover
-## band 2707-2995m, fade window 2720-2980m (set in Dream/Pastel scripts).
-const DREAM_TO_PASTEL_OVERLAP_PX := 4800.0
-## PastelGalaxy -> KuiperBelt: 4800px overlap. Kuiper bottom -> ~4128m, both-cover
-## band 4224-4512m, fade window 4240-4500m (set in Pastel/Kuiper scripts).
-const PASTEL_TO_KUIPER_OVERLAP_PX := 4800.0
-
 ## DEV: jump straight to this altitude (meters) instead of playing from 0.
 ## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
 @export var dev_start_meters: float = 0.0
