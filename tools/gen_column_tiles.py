@@ -113,12 +113,17 @@ def main():
                     help="filename stem, e.g. '6_crystal aurora expanse'")
     args = ap.parse_args()
 
+    # Use whichever canonical variants exist (bottom->top). Most biomes are the
+    # full A B C D transitional (5 tiles); some drop in without a transitional
+    # (4 tiles) -- the last variant present just becomes the biome's top.
     srcs = []
     for suf in SUFFIXES:
         matches = glob.glob(os.path.join(args.biome_dir, f"{args.prefix}_{suf}.png"))
-        if not matches:
-            raise SystemExit(f"missing source: {args.prefix}_{suf}.png in {args.biome_dir}")
-        srcs.append(matches[0])
+        if matches:
+            srcs.append(matches[0])
+    if not srcs:
+        raise SystemExit(f"no source variants ({'/'.join(SUFFIXES)}) found in {args.biome_dir}")
+    print(f"  {len(srcs)} variants: {', '.join(os.path.basename(s) for s in srcs)}")
 
     idx = args.start_index
     below_path = os.path.join(COL_DIR, f"tile_{idx - 1}.png")
