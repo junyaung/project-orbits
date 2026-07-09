@@ -97,11 +97,11 @@ const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiom
 const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundColumn.gd")
 
 ## Number of 300m tiles in res://assets/backgrounds/_column/ (tile_0..N-1,
-## bottom to top). 44 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) +
+## bottom to top). 45 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) +
 ## CrystalAurora(5) + VoidZone(5) + ForgottenRuins(5) + DarkMatterReef(5) +
-## WormholeGarden(4, no transitional) = 12900m, covering 1500m to 14700m. Add
-## per biome (A B C D [transition]) and bump.
-const COLUMN_TILE_COUNT := 44
+## WormholeGarden(5) = 13500m, covering 1500m to 15000m. Add 5 more per biome
+## (A B C D transition) and bump.
+const COLUMN_TILE_COUNT := 45
 
 ## DEV: jump straight to this altitude (meters) instead of playing from 0.
 ## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
@@ -1060,5 +1060,5 @@ func _biome_at(m: int) -> String:
 	if m < 10500: return "void_zone"
 	if m < 12000: return "forgotten_ruins"
 	if m < 13500: return "dark_matter_reef"
-	if m < 14700: return "wormhole_garden"   # 4-tile biome (no transitional yet)
+	if m < 15000: return "wormhole_garden"
 	return "beyond"
