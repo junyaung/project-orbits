@@ -97,10 +97,10 @@ const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiom
 const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundColumn.gd")
 
 ## Number of 300m tiles in res://assets/backgrounds/_column/ (tile_0..N-1,
-## bottom to top). 25 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) +
-## CrystalAurora(5) = 7500m, covering 1500m to 9000m. Add 5 more per biome
-## (A B C D transition) and bump.
-const COLUMN_TILE_COUNT := 25
+## bottom to top). 30 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) +
+## CrystalAurora(5) + VoidZone(5) = 9000m, covering 1500m to 10500m. Add 5 more
+## per biome (A B C D transition) and bump.
+const COLUMN_TILE_COUNT := 30
 
 ## DEV: jump straight to this altitude (meters) instead of playing from 0.
 ## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
@@ -1050,4 +1050,5 @@ func _biome_at(m: int) -> String:
 	if m < 6000:  return "kuiper_belt"
 	if m < 7500:  return "oort_cloud"
 	if m < 9000:  return "crystal_aurora"
+	if m < 10500: return "void_zone"
 	return "beyond"
