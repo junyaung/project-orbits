@@ -97,11 +97,12 @@ const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiom
 const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundColumn.gd")
 
 ## Number of 300m tiles in res://assets/backgrounds/_column/ (tile_0..N-1,
-## bottom to top). 55 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) +
+## bottom to top). 60 = DreamSky(5) + Pastel(5) + Kuiper(5) + Oort(5) +
 ## CrystalAurora(5) + VoidZone(5) + ForgottenRuins(5) + DarkMatterReef(5) +
-## WormholeGarden(5) + TachyonDrift(5) + EntropyField(5) = 16500m, covering 1500m
-## to 18000m. Add 5 more per biome (A B C D transition) and bump.
-const COLUMN_TILE_COUNT := 55
+## WormholeGarden(5) + TachyonDrift(5) + EntropyField(5) + ChronoSea(5) = 17400m,
+## covering 1500m to 19500m. ChronoSea's A/C/D positions are crossfade (multiple
+## images per position, see set_crossfade below). Add per biome.
+const COLUMN_TILE_COUNT := 60
 
 ## DEV: jump straight to this altitude (meters) instead of playing from 0.
 ## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
@@ -193,6 +194,11 @@ func _ready() -> void:
 		# column's bottom tile dissolves down over Upper Sky's top behind it.
 		var col_bottom_y: float = CAT_START.y - 1500.0 * PX_PER_METER
 		background_column.call("setup", col_bottom_y, COLUMN_TILE_COUNT)
+		# Chrono Sea (biome 13) crossfade positions: A=55 (2 imgs), C=57 (3),
+		# D=58 (2). Each slowly dissolves between its stacked images at runtime.
+		background_column.call("set_crossfade", 55, 2)
+		background_column.call("set_crossfade", 57, 3)
+		background_column.call("set_crossfade", 58, 2)
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START
@@ -1063,4 +1069,5 @@ func _biome_at(m: int) -> String:
 	if m < 15000: return "wormhole_garden"
 	if m < 16500: return "tachyon_drift"
 	if m < 18000: return "entropy_field"
+	if m < 19500: return "chrono_sea"
 	return "beyond"

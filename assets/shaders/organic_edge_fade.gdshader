@@ -41,5 +41,7 @@ void fragment() {
 	}
 
 	col.a *= alpha;
-	COLOR = col;
+	// Multiply (don't assign) so the sprite's modulate is preserved -- crossfade
+	// positions animate modulate.a, and assigning COLOR = col would discard it.
+	COLOR *= col;
 }
