@@ -97,10 +97,10 @@ const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiom
 const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundColumn.gd")
 
 ## Number of 300m tiles in res://assets/backgrounds/_column/ (tile_0..N-1,
-## bottom to top). 70 = ... + ChronoSea(5) + SupernovaBloom(5) + EventHorizon(5) =
-## 20400m, covering 1500m to 22500m. ChronoSea (A/C/D), SupernovaBloom (A) and
-## EventHorizon (A) have crossfade positions (see set_crossfade below). Add per biome.
-const COLUMN_TILE_COUNT := 70
+## bottom to top). 74 = ... + EventHorizon(5) + BlackHoleCathedral(4, no
+## transition yet) = 21600m, covering 1500m to 23700m. Several biomes have
+## crossfade positions (see set_crossfade below). Add per biome.
+const COLUMN_TILE_COUNT := 74
 
 ## DEV: jump straight to this altitude (meters) instead of playing from 0.
 ## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
@@ -201,6 +201,10 @@ func _ready() -> void:
 		background_column.call("set_crossfade", 60, 2)
 		# Event Horizon Veil (biome 15): A=65 crossfades 2 images.
 		background_column.call("set_crossfade", 65, 2)
+		# Black Hole Cathedral (biome 16): A=70 (2), B=71 (3), D=73 (2).
+		background_column.call("set_crossfade", 70, 2)
+		background_column.call("set_crossfade", 71, 3)
+		background_column.call("set_crossfade", 73, 2)
 
 	cat = CAT_SCENE.instantiate()
 	cat.position = CAT_START
@@ -1074,4 +1078,5 @@ func _biome_at(m: int) -> String:
 	if m < 19500: return "chrono_sea"
 	if m < 21000: return "supernova_bloom"
 	if m < 22500: return "event_horizon"
+	if m < 23700: return "black_hole_cathedral"   # 4-tile biome (no transition yet)
 	return "beyond"
