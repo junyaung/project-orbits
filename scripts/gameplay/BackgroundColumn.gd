@@ -36,9 +36,9 @@ const PRELOAD_MARGIN := 2752.0 * 3.0       # begin threaded-loading tiles this f
 ## next image begins fading in as this one begins fading out, so the stagger
 ## between images is fade + hold and the whole cycle is count * stagger.
 const CF_FADE := 1.0
-const CF_HOLD := 1.0
-const CF_STAGGER := CF_FADE + CF_HOLD          # 2.0s between image starts
-const CF_ON := CF_FADE + CF_HOLD + CF_FADE      # 3.0s an image is non-zero
+const CF_HOLD := 2.0                            # each image sits fully solo this long
+const CF_STAGGER := CF_FADE + CF_HOLD          # 3.0s between image starts
+const CF_ON := CF_FADE + CF_HOLD + CF_FADE      # 4.0s an image is non-zero
 
 var _n: int = 0
 var _bottom_y: float = 0.0                 # world Y of tile_0's bottom edge
