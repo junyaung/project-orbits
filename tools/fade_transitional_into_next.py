@@ -61,14 +61,27 @@ def _fade_top(tile_path, target, span):
         for x in range(g.W):
             r, gg, b = px[x, R]
             lum = (r + gg + b) / 3.0
-            if lum <= tl:                          # already dark enough: keep coral
+            if lum <= tl:                          # already dark enough: keep structure
                 continue
-            s = (lum + a * (tl - lum)) / lum       # scale bright lum toward target
+            # 1) luminance cap: scale bright lum toward the target (preserves hue)
+            s = (lum + a * (tl - lum)) / lum
             r2, g2, b2 = r * s, gg * s, b * s
-            tint = a * 0.4 * min(1.0, (lum - tl) / (255.0 - tl))
-            px[x, R] = (int(r2 + (tr - r2) * tint),
-                        int(g2 + (tg - g2) * tint),
-                        int(b2 + (tb - b2) * tint))
+            # 2) recolour the GREY haze toward the target hue (at the pixel's own,
+            #    already-capped luminance -- recolour, don't re-brighten). Weighted by
+            #    how desaturated the pixel is, so saturated streaks are left alone.
+            mx = max(r, gg, b); mn = min(r, gg, b)
+            sat = (mx - mn) / mx if mx else 0.0
+            desat = max(0.0, 1.0 - sat / 0.30)     # 1 = flat grey, 0 = colourful
+            w = a * desat
+            if w > 0.0:
+                cl = (r2 + g2 + b2) / 3.0
+                f = cl / tl if tl else 1.0         # target scaled to this pixel's lum
+                r2 += (tr * f - r2) * w
+                g2 += (tg * f - g2) * w
+                b2 += (tb * f - b2) * w
+            px[x, R] = (min(255, max(0, int(r2))),
+                        min(255, max(0, int(g2))),
+                        min(255, max(0, int(b2))))
     im.save(tile_path)
 
 
