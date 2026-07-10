@@ -14,12 +14,16 @@ extends Node2D
 ##
 ## CROSSFADE POSITIONS: a position can hold MULTIPLE images (tile_<i>.png,
 ## tile_<i>_1.png, ...) that slowly dissolve between each other in a loop -- each
-## fades in over CF_FADE, holds CF_HOLD, fades out over CF_FADE, and the next
-## starts as it begins fading out (Chrono Sea uses this). Their alphas always sum
-## to ~1 so there's no brightness dip. Register counts with set_crossfade().
+## weight ramps in over CF_FADE, holds CF_HOLD, ramps out over CF_FADE, and the
+## next starts as it begins fading out (Chrono Sea uses this). The weights always
+## sum to 1. It's ONE sprite whose crossfade_edge_fade shader MIXES the images by
+## those weights into an opaque frame (stacking N alpha-animated sprites instead
+## would go ~25% transparent mid-dissolve and bleed the tile below through).
+## Register counts with set_crossfade().
 
 const DIR := "res://assets/backgrounds/_column/"
 const EDGE_SHADER: Shader = preload("res://assets/shaders/organic_edge_fade.gdshader")
+const CROSSFADE_SHADER: Shader = preload("res://assets/shaders/crossfade_edge_fade.gdshader")
 
 const TILE_H := 2752.0
 const SEAM_PX := 600.0                    # overlap dissolved between adjacent tiles
@@ -40,7 +44,7 @@ var _n: int = 0
 var _bottom_y: float = 0.0                 # world Y of tile_0's bottom edge
 var _cf_count: Dictionary = {}             # index -> image count (>1 = crossfade)
 var _active: Dictionary = {}               # index -> Node2D/Sprite2D (freed on exit)
-var _cf_sprites: Dictionary = {}           # index -> Array[Sprite2D] (active crossfades)
+var _cf_sprites: Dictionary = {}           # index -> Sprite2D (active crossfade tiles)
 var _requested: Dictionary = {}            # path -> true (threaded load in flight)
 var _t: float = 0.0                        # crossfade animation clock
 
@@ -94,10 +98,12 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	for i in _cf_sprites:
-		var arr: Array = _cf_sprites[i]
-		var n: int = arr.size()
-		for k in n:
-			arr[k].modulate.a = _cf_alpha(k, n)
+		var sp: Sprite2D = _cf_sprites[i]
+		var n: int = _count(i)
+		var mat: ShaderMaterial = sp.material
+		mat.set_shader_parameter("w_a", _cf_alpha(0, n))
+		mat.set_shader_parameter("w_b", _cf_alpha(1, n))
+		mat.set_shader_parameter("w_c", _cf_alpha(2, n) if n >= 3 else 0.0)
 
 
 func update_view(cam_y: float) -> void:
@@ -132,39 +138,31 @@ func update_view(cam_y: float) -> void:
 
 
 func _instance(i: int, yt: float, cnt: int) -> void:
-	if cnt == 1:
-		var sp := _make_sprite(i, 0, yt)
-		add_child(sp)
-		_active[i] = sp
-	else:
-		# All images share the world slot; drive their alphas each frame.
-		var container := Node2D.new()
-		var arr: Array[Sprite2D] = []
-		for k in cnt:
-			var sp := _make_sprite(i, k, yt)
-			sp.modulate.a = _cf_alpha(k, cnt)   # enter at the right phase, no pop
-			container.add_child(sp)
-			arr.append(sp)
-		add_child(container)
-		_active[i] = container
-		_cf_sprites[i] = arr
-
-
-func _make_sprite(i: int, k: int, yt: float) -> Sprite2D:
 	var sp := Sprite2D.new()
 	sp.centered = false
-	sp.texture = _fetch(_path(i, k))
+	sp.texture = _fetch(_path(i, 0))
 	sp.position = Vector2(0.0, yt)
 	# Upper tiles render IN FRONT so their bottom_fade reveals the tile below.
 	sp.z_index = -90 + i
 	var mat := ShaderMaterial.new()
-	mat.shader = EDGE_SHADER
+	if cnt == 1:
+		mat.shader = EDGE_SHADER
+	else:
+		# One sprite that MIXES the crossfade images by weight (see class doc).
+		mat.shader = CROSSFADE_SHADER
+		mat.set_shader_parameter("tex_b", _fetch(_path(i, 1)))
+		mat.set_shader_parameter("tex_c", _fetch(_path(i, 2)) if cnt >= 3 else _fetch(_path(i, 1)))
+		mat.set_shader_parameter("w_a", _cf_alpha(0, cnt))   # enter at the right phase
+		mat.set_shader_parameter("w_b", _cf_alpha(1, cnt))
+		mat.set_shader_parameter("w_c", _cf_alpha(2, cnt) if cnt >= 3 else 0.0)
+		_cf_sprites[i] = sp
 	mat.set_shader_parameter("top_fade",     0.0)
 	mat.set_shader_parameter("bottom_fade",  SEAM_PX / TILE_H)
 	mat.set_shader_parameter("noise_amount", 0.10)
 	mat.set_shader_parameter("noise_scale",  5.0)
 	sp.material = mat
-	return sp
+	add_child(sp)
+	_active[i] = sp
 
 
 ## Prefer the background-loaded texture; fall back to a synchronous load only if a
