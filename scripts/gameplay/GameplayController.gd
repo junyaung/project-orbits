@@ -97,10 +97,10 @@ const UpperSkyBiomeScript        := preload("res://scripts/gameplay/UpperSkyBiom
 const BackgroundColumnScript     := preload("res://scripts/gameplay/BackgroundColumn.gd")
 
 ## Number of 300m tiles in res://assets/backgrounds/_column/ (tile_0..N-1,
-## bottom to top). 74 = ... + EventHorizon(5) + BlackHoleCathedral(4, no
-## transition yet) = 21600m, covering 1500m to 23700m. Several biomes have
-## crossfade positions (see set_crossfade below). Add per biome.
-const COLUMN_TILE_COUNT := 74
+## bottom to top). 75 = ... + EventHorizon(5) + BlackHoleCathedral(5) = 22500m,
+## covering 1500m to 24000m. Several biomes have crossfade positions (see
+## set_crossfade below). Add per biome.
+const COLUMN_TILE_COUNT := 75
 
 ## DEV: jump straight to this altitude (meters) instead of playing from 0.
 ## Set to 0 for a normal run. Try 1200 to land directly in the meteor zone.
@@ -1078,5 +1078,5 @@ func _biome_at(m: int) -> String:
 	if m < 19500: return "chrono_sea"
 	if m < 21000: return "supernova_bloom"
 	if m < 22500: return "event_horizon"
-	if m < 23700: return "black_hole_cathedral"   # 4-tile biome (no transition yet)
+	if m < 24000: return "black_hole_cathedral"
 	return "beyond"
